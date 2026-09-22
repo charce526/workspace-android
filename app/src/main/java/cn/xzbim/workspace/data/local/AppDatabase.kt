@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import cn.xzbim.workspace.data.local.entity.WorkspaceEntity
 
 /**
@@ -19,6 +21,20 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun workspaceDao(): WorkspaceDao
 
     companion object {
+        // Version 1 predates the default-workspace flag. Never silently erase saved workspaces.
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val columns = mutableSetOf<String>()
+                db.query("PRAGMA table_info(workspaces)").use { cursor ->
+                    val nameIndex = cursor.getColumnIndexOrThrow("name")
+                    while (cursor.moveToNext()) columns.add(cursor.getString(nameIndex))
+                }
+                if ("is_default" !in columns) {
+                    db.execSQL("ALTER TABLE workspaces ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0")
+                }
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -28,7 +44,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "workspace_database"
-                ).fallbackToDestructiveMigration().build()
+                ).addMigrations(MIGRATION_1_2).build()
                 INSTANCE = instance
                 instance
             }

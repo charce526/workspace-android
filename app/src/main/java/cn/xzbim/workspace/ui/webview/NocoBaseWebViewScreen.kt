@@ -75,6 +75,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import cn.xzbim.workspace.WorkspaceApplication
 import cn.xzbim.workspace.R
+import cn.xzbim.workspace.security.WebUrlPolicy
 import cn.xzbim.workspace.data.model.Workspace
 import cn.xzbim.workspace.network.NetworkMonitor
 import cn.xzbim.workspace.network.NocoBaseApiClient
@@ -221,7 +222,10 @@ fun NocoBaseWebViewScreen(
     }
 
     // 保持 WebView 实例持久化
-    val webView = remember(context) {
+    val callbackHandler = remember { Handler(Looper.getMainLooper()) }
+    val popupWebViews = remember { mutableSetOf<WebView>() }
+    var disposed by remember { mutableStateOf(false) }
+    val webView = remember(context, workspaceId) {
         WebView(context).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -238,7 +242,8 @@ fun NocoBaseWebViewScreen(
             addJavascriptInterface(object {
                 @JavascriptInterface
                 fun onTopColorChanged(rgbStr: String?) {
-                    Handler(Looper.getMainLooper()).post {
+                    callbackHandler.post {
+                        if (disposed) return@post
                         if (!rgbStr.isNullOrBlank() && rgbStr != "transparent") {
                             parseAndApplyColor(rgbStr) { color, isLightBg ->
                                 if (color != null) {
@@ -302,20 +307,38 @@ fun NocoBaseWebViewScreen(
         // 会话状态异步校验
         if (savedToken.isNotBlank()) {
             viewModel.checkSession(workspaceId) { result ->
-                if (result !is SessionCheckResult.Valid) {
+                if (disposed) return@checkSession
+                if (result is SessionCheckResult.ExpiredOrUnauthorized) {
                     Log.d("NocoBaseWebView", "Background Session Check: Expired/Invalid -> Redirecting to ReLogin")
                     Toast.makeText(context, "登录已失效，请重新登录", Toast.LENGTH_SHORT).show()
                     onRedirectToReLogin(workspaceId)
-                } else {
+                } else if (result is SessionCheckResult.Valid && !disposed) {
+                    val refreshedToken = app.credentialStore.getToken(workspaceId).orEmpty()
+                    if (refreshedToken.isNotBlank() && refreshedToken != token) {
+                        token = refreshedToken
+                        sessionInjected = false
+                        sessionReloadPerformed = false
+                        webView.reload()
+                    }
                     Log.d("NocoBaseWebView", "Background Session Check: Valid")
                 }
             }
         }
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(webView) {
         onDispose {
+            disposed = true
             fileChooser.cancelPendingCallback()
+            callbackHandler.removeCallbacksAndMessages(null)
+            popupWebViews.toList().forEach { it.stopLoading(); it.destroy() }
+            popupWebViews.clear()
+            webView.stopLoading()
+            webView.removeJavascriptInterface("NocoBaseColorBridge")
+            webView.webChromeClient = null
+            webView.webViewClient = WebViewClient()
+            (webView.parent as? ViewGroup)?.removeView(webView)
+            webView.destroy()
             Log.d("NocoBaseWebView", "NocoBaseWebViewScreen disposed")
         }
     }
@@ -365,8 +388,11 @@ fun NocoBaseWebViewScreen(
                                 view: WebView?,
                                 request: WebResourceRequest?
                             ): Boolean {
-                                val url = request?.url?.toString() ?: ""
+                                if (request?.isForMainFrame != true) return false
+                                val url = request.url.toString()
                                 redirectCount++
+                                // Allow the initial sign-in document to receive this workspace's token.
+                                if (!sessionInjected && WebUrlPolicy.isSignIn(url, workspace?.serverUrl)) return false
                                 return currentUrlHandler.value.handleUrlLoading(url)
                             }
 
@@ -381,10 +407,6 @@ fun NocoBaseWebViewScreen(
 
                                 injectColorObserver(view)
 
-                                if (isNocoBaseSigninUrl(url)) {
-                                    view?.stopLoading()
-                                    onRedirectToReLogin(workspaceId)
-                                }
                             }
 
                             override fun onPageFinished(view: WebView?, url: String?) {
@@ -393,19 +415,24 @@ fun NocoBaseWebViewScreen(
 
                                 readyDetector.checkReadiness(view)
 
-                                if (view != null && token.isNotBlank() && isHttpUrl(url) && !sessionInjected) {
-                                    NocoBaseSessionBridge.injectAndCheckStorage(view, token) { matches, _ ->
+                                if (view != null && token.isNotBlank() && WebUrlPolicy.sameOrigin(workspace?.serverUrl, url) && !sessionInjected) {
+                                    NocoBaseSessionBridge.injectAndCheckStorage(view, token, workspace?.serverUrl.orEmpty()) { matches, written ->
+                                        if (disposed || !written) return@injectAndCheckStorage
                                         sessionInjected = true
                                         if (!matches && !sessionReloadPerformed) {
                                             sessionReloadPerformed = true
-                                            view.reload()
+                                            if (WebUrlPolicy.isSignIn(view.url, workspace?.serverUrl)) {
+                                                view.loadUrl(workspace!!.serverUrl)
+                                            } else {
+                                                view.reload()
+                                            }
                                         }
                                     }
                                 }
 
                                 injectColorObserver(view)
 
-                                val mainHandler = Handler(Looper.getMainLooper())
+                                val mainHandler = callbackHandler
                                 mainHandler.postDelayed({
                                     inspectDomHealth(view, "DOM +2s")
                                 }, 2000)
@@ -414,7 +441,7 @@ fun NocoBaseWebViewScreen(
                                     inspectDomHealth(view, "DOM +5s")
                                 }, 5000)
 
-                                if (isNocoBaseSigninUrl(url)) {
+                                if (sessionInjected && WebUrlPolicy.isSignIn(url, workspace?.serverUrl)) {
                                     onRedirectToReLogin(workspaceId)
                                 }
                             }
@@ -487,21 +514,27 @@ fun NocoBaseWebViewScreen(
                             ): Boolean {
                                 val message = resultMsg ?: return false
                                 val transport = message.obj as? WebView.WebViewTransport ?: return false
+                                if (!isUserGesture) return false
                                 val popupWebView = WebView(context)
+                                popupWebViews.add(popupWebView)
                                 var targetHandled = false
 
                                 fun handleTarget(url: String?) {
-                                    if (targetHandled || url.isNullOrBlank()) return
+                                    if (targetHandled || url.isNullOrBlank() || url == "about:blank") return
                                     targetHandled = true
 
                                     // 开启外部浏览器设置时由处理器拉起系统浏览器；
                                     // 关闭时（以及同源链接）在当前 WebView 中继续打开。
-                                    if (!currentUrlHandler.value.handleUrlLoading(url)) {
+                                    if (!currentUrlHandler.value.handleUrlLoading(url, isNewWindow = true)) {
                                         view?.loadUrl(url)
                                     }
 
-                                    popupWebView.stopLoading()
-                                    popupWebView.destroy()
+                                    callbackHandler.post {
+                                        if (popupWebViews.remove(popupWebView)) {
+                                            popupWebView.stopLoading()
+                                            popupWebView.destroy()
+                                        }
+                                    }
                                 }
 
                                 popupWebView.webViewClient = object : WebViewClient() {
@@ -522,6 +555,12 @@ fun NocoBaseWebViewScreen(
                                     }
                                 }
 
+                                callbackHandler.postDelayed({
+                                    if (popupWebViews.remove(popupWebView)) {
+                                        popupWebView.stopLoading()
+                                        popupWebView.destroy()
+                                    }
+                                }, 15000)
                                 transport.webView = popupWebView
                                 message.sendToTarget()
                                 return true
@@ -539,7 +578,7 @@ fun NocoBaseWebViewScreen(
                             }
 
                             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
-                                if (consoleMessage != null) {
+                                if (consoleMessage != null && (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
                                     Log.d(
                                         "NocoBaseJS",
                                         "[JS ${consoleMessage.messageLevel()}] ${consoleMessage.message()} (at ${consoleMessage.sourceId()}:${consoleMessage.lineNumber()})"

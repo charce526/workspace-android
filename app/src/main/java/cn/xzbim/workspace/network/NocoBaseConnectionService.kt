@@ -3,6 +3,7 @@ package cn.xzbim.workspace.network
 import android.util.Log
 import cn.xzbim.workspace.network.result.ConnectionResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import java.io.IOException
@@ -20,12 +21,12 @@ class NocoBaseConnectionService {
         val formattedUrl = NocoBaseApiClient.normalizeServerUrl(serverUrl)
         Log.d(TAG, "Testing connection to: $formattedUrl")
 
+        try {
         val request = Request.Builder()
             .url(formattedUrl)
             .get()
             .build()
 
-        try {
             NocoBaseApiClient.client.newCall(request).execute().use { response ->
                 val code = response.code
                 Log.d(TAG, "Connection response code: $code")
@@ -33,7 +34,7 @@ class NocoBaseConnectionService {
                 if (response.isSuccessful || code in 200..499) {
                     ConnectionResult.Success(
                         serverUrl = formattedUrl,
-                        version = "2.0+"
+                        version = "未检测"
                     )
                 } else {
                     ConnectionResult.ServerError(
@@ -42,6 +43,8 @@ class NocoBaseConnectionService {
                     )
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: IOException) {
             Log.d(TAG, "Connection failed: ${e.message}")
             ConnectionResult.NetworkError("无法连接到服务器，请检查地址或网络环境")

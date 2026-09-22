@@ -17,16 +17,18 @@ object NocoBaseWebViewManager {
 
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
-        settings.javaScriptCanOpenWindowsAutomatically = true
+        settings.javaScriptCanOpenWindowsAutomatically = false
         settings.setSupportMultipleWindows(true)
 
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
         settings.setSupportZoom(false)
 
-        settings.allowFileAccess = true
+        settings.allowFileAccess = false
+        settings.allowFileAccessFromFileURLs = false
+        settings.allowUniversalAccessFromFileURLs = false
         settings.allowContentAccess = true
-        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+        settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)

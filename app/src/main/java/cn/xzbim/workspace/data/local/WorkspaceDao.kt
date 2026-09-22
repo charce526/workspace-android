@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Transaction
 import cn.xzbim.workspace.data.local.entity.WorkspaceEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -13,6 +14,32 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface WorkspaceDao {
+
+    @Transaction
+    suspend fun markLastUsed(id: String) {
+        if (getWorkspaceById(id) == null) return
+        clearLastUsed()
+        setLastUsed(id)
+    }
+
+    @Transaction
+    suspend fun markDefault(id: String) {
+        if (getWorkspaceById(id) == null) return
+        clearDefaultWorkspace()
+        setDefaultWorkspace(id)
+    }
+
+    @Transaction
+    suspend fun insertAndMarkLastUsed(workspace: WorkspaceEntity) {
+        clearLastUsed()
+        insertWorkspace(workspace)
+    }
+
+    @Transaction
+    suspend fun updateAndMarkLastUsed(workspace: WorkspaceEntity) {
+        clearLastUsed()
+        updateWorkspace(workspace)
+    }
 
     @Query("SELECT * FROM workspaces ORDER BY is_default DESC, last_used_at DESC")
     fun getAllWorkspacesFlow(): Flow<List<WorkspaceEntity>>

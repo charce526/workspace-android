@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -20,18 +22,26 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    val signingProperties = Properties().apply {
+        val propertiesFile = rootProject.file("keystore.properties")
+        if (propertiesFile.exists()) propertiesFile.inputStream().use { load(it) }
+    }
+    val hasReleaseSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+        .all { !signingProperties.getProperty(it).isNullOrBlank() }
     signingConfigs {
-        create("release") {
-            storeFile = file("workspace-release.jks")
-            storePassword = "WorkspaceReleaseKey2026!"
-            keyAlias = "workspace_key"
-            keyPassword = "WorkspaceReleaseKey2026!"
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = rootProject.file(signingProperties.getProperty("storeFile"))
+                storePassword = signingProperties.getProperty("storePassword")
+                keyAlias = signingProperties.getProperty("keyAlias")
+                keyPassword = signingProperties.getProperty("keyPassword")
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
             optimization {
                 enable = false
             }

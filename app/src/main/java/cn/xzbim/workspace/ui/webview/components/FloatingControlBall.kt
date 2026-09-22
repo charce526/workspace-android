@@ -98,13 +98,13 @@ fun FloatingControlBall(
 
     val safeTopPx = statusBarTopPx + with(density) { 12.dp.toPx() }
     val safeBottomMarginPx = navBarBottomPx + with(density) { 16.dp.toPx() }
-    val safeBottomLimitPx = screenHeightPx - ballSizePx - safeBottomMarginPx
+    val safeBottomLimitPx = (screenHeightPx - ballSizePx - safeBottomMarginPx).coerceAtLeast(safeTopPx)
 
     val availableSafeHeight = (safeBottomLimitPx - safeTopPx).coerceAtLeast(1f)
 
     val leftSnapPx = marginPx
-    val rightSnapPx = screenWidthPx - ballSizePx - marginPx
-    val touchSlopPx = with(density) { viewConfig.touchSlop.dp.toPx() }
+    val rightSnapPx = (screenWidthPx - ballSizePx - marginPx).coerceAtLeast(leftSnapPx)
+    val touchSlopPx = viewConfig.touchSlop
 
     var isRightSide by remember(savedIsRightSide) { mutableStateOf(savedIsRightSide) }
     val initialXPx = if (isRightSide) rightSnapPx else leftSnapPx
@@ -118,6 +118,14 @@ fun FloatingControlBall(
     var currentYPx by remember { mutableFloatStateOf(initialYPx) }
 
     var targetXPx by remember { mutableFloatStateOf(initialXPx) }
+    LaunchedEffect(savedIsRightSide, savedVerticalRatio, screenWidthPx, screenHeightPx) {
+        if (!isDragging) {
+            isRightSide = savedIsRightSide
+            currentXPx = if (isRightSide) rightSnapPx else leftSnapPx
+            targetXPx = currentXPx
+            currentYPx = initialYPx
+        }
+    }
     val animatedXPx by animateFloatAsState(
         targetValue = targetXPx,
         animationSpec = tween(300),
@@ -155,7 +163,7 @@ fun FloatingControlBall(
                 .size(52.dp)
                 .alpha(animatedAlpha)
                 .clip(CircleShape)
-                .pointerInput(Unit) {
+                .pointerInput(screenWidthPx, screenHeightPx, savedIsRightSide, savedVerticalRatio) {
                     detectDragGestures(
                         onDragStart = {
                             isDragging = true

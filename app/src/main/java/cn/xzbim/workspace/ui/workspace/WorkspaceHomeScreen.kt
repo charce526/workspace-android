@@ -224,6 +224,9 @@ fun WorkspaceHomeScreen(
                                         onExpired = {
                                             Toast.makeText(context, "请先登录工作空间", Toast.LENGTH_SHORT).show()
                                             onNavigateToReLogin(workspace.id)
+                                        },
+                                        onUnavailable = {
+                                            Toast.makeText(context, "暂时无法连接服务器，请稍后重试", Toast.LENGTH_SHORT).show()
                                         }
                                     )
                                 }

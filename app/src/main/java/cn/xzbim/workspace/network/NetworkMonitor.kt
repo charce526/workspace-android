@@ -36,19 +36,14 @@ class NetworkMonitor(context: Context) {
             network: Network,
             networkCapabilities: NetworkCapabilities
         ) {
-            val hasInternet = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            val hasValidated = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-            val online = hasInternet && hasValidated
-            _isOnline.value = online
+            // Local NocoBase deployments need a network, not public Internet validation.
+            _isOnline.value = true
         }
     }
 
     fun startMonitoring() {
         try {
-            val request = NetworkRequest.Builder()
-                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                .build()
-            connectivityManager.registerNetworkCallback(request, networkCallback)
+            connectivityManager.registerDefaultNetworkCallback(networkCallback)
         } catch (e: Exception) {
             Log.d("NocoBaseNetwork", "Failed to register network callback: ${e.message}")
         }
@@ -65,7 +60,7 @@ class NetworkMonitor(context: Context) {
         return try {
             val activeNetwork = connectivityManager.activeNetwork ?: return false
             val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
-            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            true
         } catch (_: Exception) {
             false
         }

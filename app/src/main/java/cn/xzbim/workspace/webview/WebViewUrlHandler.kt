@@ -7,6 +7,7 @@ import android.util.Log
 import android.widget.Toast
 import cn.xzbim.workspace.network.NocoBaseApiClient
 import java.net.URI
+import cn.xzbim.workspace.security.WebUrlPolicy
 
 /**
  * WebView URL 链接与 Schema 路由处理器（支持用户自定义：非同源链接在本应用内加载还是在外部浏览器中打开）
@@ -21,11 +22,13 @@ class WebViewUrlHandler(
     private val normalizedServerUrl = NocoBaseApiClient.normalizeServerUrl(serverUrl)
     private val serverOrigin = extractOrigin(normalizedServerUrl)
 
-    fun handleUrlLoading(url: String): Boolean {
+    fun handleUrlLoading(url: String, isNewWindow: Boolean = false): Boolean {
         if (url.isBlank()) return false
 
         val uri = Uri.parse(url)
         val scheme = uri.scheme?.lowercase() ?: ""
+
+        if (scheme in listOf("file", "content", "data", "javascript", "intent", "about", "blob")) return true
 
         when (scheme) {
             "tel" -> {
@@ -54,16 +57,16 @@ class WebViewUrlHandler(
             return true
         }
 
-        if (isNocoBaseSigninUrl(url)) {
+        if (WebUrlPolicy.isSignIn(url, serverUrl)) {
             Log.d("NocoBaseUrl", "Redirected to signin: $url")
             onRedirectToReLogin()
             return true
         }
 
         val currentOrigin = extractOrigin(url)
-        val isSameOrigin = (currentOrigin == serverOrigin)
+        val isSameOrigin = WebUrlPolicy.sameOrigin(url, serverUrl)
 
-        if (isSameOrigin) {
+        if (isSameOrigin && !(isNewWindow && openInExternalBrowser)) {
             return false
         } else {
             if (openInExternalBrowser) {

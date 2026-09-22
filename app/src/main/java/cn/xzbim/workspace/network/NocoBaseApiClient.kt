@@ -15,6 +15,9 @@ object NocoBaseApiClient {
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
+            // Never forward passwords through HTTP redirects to another endpoint.
+            .followRedirects(false)
+            .followSslRedirects(false)
             .build()
     }
 

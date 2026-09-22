@@ -342,7 +342,9 @@ fun SettingsContent(
                 TextButton(onClick = {
                     showClearCacheDialog = false
                     try {
-                        WebView(context).clearCache(true)
+                        WebView(context).let { temporary ->
+                            try { temporary.clearCache(true) } finally { temporary.destroy() }
+                        }
                         Toast.makeText(context, "缓存已清除", Toast.LENGTH_SHORT).show()
                     } catch (_: Exception) {
                         Toast.makeText(context, "清理缓存失败", Toast.LENGTH_SHORT).show()

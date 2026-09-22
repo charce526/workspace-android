@@ -76,7 +76,9 @@ fun NavGraph(
                     navController.navigate(Screen.ReLogin.createRoute(workspaceId))
                 },
                 onNavigateToWebView = { workspaceId ->
-                    navController.navigate(Screen.NocoBaseWebView.createRoute(workspaceId))
+                    navController.navigate(Screen.NocoBaseWebView.createRoute(workspaceId)) {
+                        launchSingleTop = true
+                    }
                 },
                 onNavigateToSettings = {
                     navController.navigate(Screen.Settings.route)

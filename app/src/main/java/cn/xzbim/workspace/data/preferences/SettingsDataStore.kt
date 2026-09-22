@@ -9,6 +9,9 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import androidx.datastore.preferences.core.emptyPreferences
+import java.io.IOException
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "workspace_settings")
@@ -34,26 +37,30 @@ class SettingsDataStore(private val context: Context) {
         val KEY_OPEN_LINKS_IN_EXTERNAL_BROWSER = booleanPreferencesKey("open_links_in_external_browser")
     }
 
-    val autoEnterLastWorkspaceFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    private val preferencesFlow = context.dataStore.data.catch { error ->
+        if (error is IOException) emit(emptyPreferences()) else throw error
+    }
+
+    val autoEnterLastWorkspaceFlow: Flow<Boolean> = preferencesFlow.map { preferences ->
         preferences[KEY_AUTO_ENTER_LAST_WORKSPACE] ?: false
     }
 
-    val rememberLoginStateFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val rememberLoginStateFlow: Flow<Boolean> = preferencesFlow.map { preferences ->
         preferences[KEY_REMEMBER_LOGIN_STATE] ?: true
     }
 
-    val floatingBallPositionFlow: Flow<Pair<Boolean, Float>> = context.dataStore.data.map { preferences ->
+    val floatingBallPositionFlow: Flow<Pair<Boolean, Float>> = preferencesFlow.map { preferences ->
         Pair(
             preferences[KEY_BALL_IS_RIGHT_SIDE] ?: true,
             preferences[KEY_BALL_VERTICAL_RATIO] ?: 0.96f
         )
     }
 
-    val floatingBallIdleAlphaFlow: Flow<Float> = context.dataStore.data.map { preferences ->
+    val floatingBallIdleAlphaFlow: Flow<Float> = preferencesFlow.map { preferences ->
         preferences[KEY_BALL_IDLE_ALPHA] ?: 0.65f
     }
 
-    val themeModeFlow: Flow<ThemeMode> = context.dataStore.data.map { preferences ->
+    val themeModeFlow: Flow<ThemeMode> = preferencesFlow.map { preferences ->
         try {
             val name = preferences[KEY_THEME_MODE] ?: ThemeMode.SYSTEM.name
             ThemeMode.valueOf(name)
@@ -62,15 +69,15 @@ class SettingsDataStore(private val context: Context) {
         }
     }
 
-    val webViewZoomEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val webViewZoomEnabledFlow: Flow<Boolean> = preferencesFlow.map { preferences ->
         preferences[KEY_WEBVIEW_ZOOM_ENABLED] ?: true
     }
 
-    val keepScreenOnFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val keepScreenOnFlow: Flow<Boolean> = preferencesFlow.map { preferences ->
         preferences[KEY_KEEP_SCREEN_ON] ?: false
     }
 
-    val openLinksInExternalBrowserFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val openLinksInExternalBrowserFlow: Flow<Boolean> = preferencesFlow.map { preferences ->
         preferences[KEY_OPEN_LINKS_IN_EXTERNAL_BROWSER] ?: false
     }
 

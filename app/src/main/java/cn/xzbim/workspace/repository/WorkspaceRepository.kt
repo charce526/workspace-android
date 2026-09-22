@@ -119,14 +119,12 @@ class WorkspaceRepository(
         password: String
     ): LoginResult {
         val formattedUrl = NocoBaseApiClient.normalizeServerUrl(serverUrl)
-        Log.d(TAG, "signInAndSaveWorkspace -> Server URL: $formattedUrl | Username: $username")
 
         val loginResult = authService.signIn(formattedUrl, username, password)
 
         if (loginResult is LoginResult.Success) {
             val id = UUID.randomUUID().toString()
 
-            workspaceDao.clearLastUsed()
 
             val newWorkspace = Workspace(
                 id = id,
@@ -137,7 +135,7 @@ class WorkspaceRepository(
                 isLastUsed = true
             )
 
-            workspaceDao.insertWorkspace(newWorkspace.toEntity())
+            workspaceDao.insertAndMarkLastUsed(newWorkspace.toEntity())
             credentialStore.saveToken(id, loginResult.token)
 
             val rememberLogin = settingsDataStore.rememberLoginStateFlow.first()
@@ -172,7 +170,7 @@ class WorkspaceRepository(
                 updatedAt = System.currentTimeMillis()
             )
 
-            workspaceDao.updateWorkspace(updatedEntity)
+            workspaceDao.updateAndMarkLastUsed(updatedEntity)
             credentialStore.saveToken(workspaceId, loginResult.token)
 
             val rememberLogin = settingsDataStore.rememberLoginStateFlow.first()
@@ -198,7 +196,7 @@ class WorkspaceRepository(
 
         if (!token.isNullOrBlank()) {
             val result = authService.checkSession(workspace.serverUrl, token)
-            if (result is SessionCheckResult.Valid) {
+            if (result !is SessionCheckResult.ExpiredOrUnauthorized) {
                 return result
             }
         }
@@ -213,6 +211,9 @@ class WorkspaceRepository(
             if (reLoginResult is LoginResult.Success) {
                 credentialStore.saveToken(workspaceId, reLoginResult.token)
                 return SessionCheckResult.Valid(reLoginResult.userId, reLoginResult.username)
+            }
+            if (reLoginResult !is LoginResult.InvalidCredentials) {
+                return SessionCheckResult.Unavailable()
             }
         }
 
@@ -229,13 +230,14 @@ class WorkspaceRepository(
         val existing = workspaceDao.getWorkspaceById(id) ?: return LoginResult.NetworkError("工作空间不存在")
         val formattedUrl = NocoBaseApiClient.normalizeServerUrl(serverUrl)
 
-        val verifyPassword = if (!password.isNullOrBlank()) password else getPassword(id) ?: ""
+        // A saved password must never be sent to a newly edited server/account.
+        val identityChanged = formattedUrl != existing.serverUrl || username != existing.username
+        val verifyPassword = if (!password.isNullOrBlank()) password else if (!identityChanged) getPassword(id) ?: "" else ""
 
         if (verifyPassword.isBlank()) {
             return LoginResult.InvalidCredentials("密码为空，请输入密码进行验证")
         }
 
-        Log.d(TAG, "updateWorkspaceWithAuth -> Verifying credentials for $username on $formattedUrl")
         val loginResult = authService.signIn(formattedUrl, username, verifyPassword)
 
         if (loginResult is LoginResult.Success) {
@@ -269,8 +271,7 @@ class WorkspaceRepository(
     }
 
     suspend fun setLastUsedWorkspace(id: String) {
-        workspaceDao.clearLastUsed()
-        workspaceDao.setLastUsed(id, System.currentTimeMillis())
+        workspaceDao.markLastUsed(id)
     }
 
     suspend fun getLastUsedWorkspace(): Workspace? {
@@ -278,8 +279,7 @@ class WorkspaceRepository(
     }
 
     suspend fun setDefaultWorkspace(id: String) {
-        workspaceDao.clearDefaultWorkspace()
-        workspaceDao.setDefaultWorkspace(id)
+        workspaceDao.markDefault(id)
     }
 
     suspend fun unsetDefaultWorkspace(id: String) {

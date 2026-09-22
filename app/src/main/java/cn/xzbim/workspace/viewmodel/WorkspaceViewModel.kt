@@ -9,6 +9,7 @@ import cn.xzbim.workspace.network.result.LoginResult
 import cn.xzbim.workspace.network.result.SessionCheckResult
 import cn.xzbim.workspace.repository.WorkspaceRepository
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -186,7 +187,8 @@ class WorkspaceViewModel(
     fun checkSessionAndOpen(
         workspaceId: String,
         onValid: () -> Unit,
-        onExpired: () -> Unit
+        onExpired: () -> Unit,
+        onUnavailable: () -> Unit = {}
     ) {
         if (_isOpeningWorkspace.value) return
 
@@ -200,12 +202,16 @@ class WorkspaceViewModel(
                 val result = repository.checkSession(workspaceId)
                 if (result is SessionCheckResult.Valid) {
                     onValid()
-                } else {
+                } else if (result is SessionCheckResult.ExpiredOrUnauthorized) {
                     onExpired()
+                } else {
+                    onUnavailable()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 e.printStackTrace()
-                onExpired()
+                onUnavailable()
             } finally {
                 _isOpeningWorkspace.value = false
                 _openingWorkspaceId.value = null
@@ -221,12 +227,12 @@ class WorkspaceViewModel(
         onResult: (LoginResult) -> Unit
     ) {
         viewModelScope.launch {
-            val result = repository.signInAndSaveWorkspace(
+            val result = runLogin { repository.signInAndSaveWorkspace(
                 name = name,
                 serverUrl = serverUrl,
                 username = username,
                 password = password
-            )
+            ) }
             onResult(result)
         }
     }
@@ -237,10 +243,10 @@ class WorkspaceViewModel(
         onResult: (LoginResult) -> Unit
     ) {
         viewModelScope.launch {
-            val result = repository.reLoginAndUpdateWorkspace(
+            val result = runLogin { repository.reLoginAndUpdateWorkspace(
                 workspaceId = workspaceId,
                 password = password
-            )
+            ) }
             onResult(result)
         }
     }
@@ -250,7 +256,13 @@ class WorkspaceViewModel(
         onResult: (SessionCheckResult) -> Unit
     ) {
         viewModelScope.launch {
-            val result = repository.checkSession(workspaceId)
+            val result = try {
+                repository.checkSession(workspaceId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                SessionCheckResult.Unavailable()
+            }
             onResult(result)
         }
     }
@@ -264,16 +276,25 @@ class WorkspaceViewModel(
         onResult: (LoginResult) -> Unit
     ) {
         viewModelScope.launch {
-            val result = repository.updateWorkspaceWithAuth(
+            val result = runLogin { repository.updateWorkspaceWithAuth(
                 id = id,
                 name = name,
                 serverUrl = serverUrl,
                 username = username,
                 password = password
-            )
+            ) }
             onResult(result)
         }
     }
+
+    private suspend fun runLogin(action: suspend () -> LoginResult): LoginResult =
+        try {
+            action()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            LoginResult.NetworkError("无法保存或验证工作空间，请检查存储空间与服务器地址后重试")
+        }
 
     fun deleteWorkspace(id: String) {
         viewModelScope.launch {

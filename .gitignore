@@ -17,3 +17,6 @@ local.properties
 /app/workspace-release.jks
 *.jks
 *.keystore
+
+
+/keystore.properties

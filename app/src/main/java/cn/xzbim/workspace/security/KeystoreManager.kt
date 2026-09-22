@@ -19,6 +19,7 @@ object KeystoreManager {
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
     private const val GCM_TAG_LENGTH = 128
 
+    @Synchronized
     private fun getSecretKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         if (keyStore.containsAlias(KEY_ALIAS)) {

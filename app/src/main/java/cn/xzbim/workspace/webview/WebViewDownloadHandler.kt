@@ -4,6 +4,7 @@ import android.app.DownloadManager
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
+import android.os.Build
 import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.DownloadListener
@@ -34,7 +35,15 @@ class WebViewDownloadHandler(private val context: Context) : DownloadListener {
             return
         }
 
+        if (!url.startsWith("https://", true) && !url.startsWith("http://", true)) {
+            Toast.makeText(context, "不支持此下载链接", Toast.LENGTH_SHORT).show()
+            return
+        }
         val fileName = parseFileName(url, contentDisposition, mimeType)
+            .substringAfterLast('/').substringAfterLast('\\')
+            .replace(Regex("[\\x00-\\x1f\\x7f]"), "_")
+            .take(180).takeUnless { it.isBlank() || it == "." || it == ".." }
+            ?: "download_${System.currentTimeMillis()}"
 
         Log.d(
             "NocoBaseDownload",
@@ -46,7 +55,13 @@ class WebViewDownloadHandler(private val context: Context) : DownloadListener {
                 setTitle(fileName)
                 setDescription("NocoBase 附件下载中...")
                 setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                // Android 8/9 public Downloads requires a storage permission; use app Downloads there.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                } else {
+                    setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)
+                }
+                if (!mimeType.isNullOrBlank()) setMimeType(mimeType)
 
                 val cookie = CookieManager.getInstance().getCookie(url)
                 if (!cookie.isNullOrBlank()) {
