@@ -18,7 +18,14 @@ class WebViewFileChooser {
     private var cameraUri: Uri? = null
     private var cameraFile: File? = null
     private var multiple = false
-    private var accepted: Array<String> = emptyArray()
+    private var accepted: Array<String?> = emptyArray()
+
+    fun cancelPendingCallback() {
+        cameraUri = null
+        cameraFile?.delete()
+        cameraFile = null
+        complete(null)
+    }
 
     fun prepareFileChooser(
         filePathCallback: ValueCallback<Array<Uri>>?,
@@ -27,7 +34,7 @@ class WebViewFileChooser {
         cancelPendingCallback()
         callback = filePathCallback
         multiple = fileChooserParams?.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
-        accepted = fileChooserParams?.acceptTypes.orEmpty()
+        accepted = fileChooserParams?.acceptTypes ?: emptyArray()
     }
 
     fun takePhoto(context: Context, cameraLauncher: ActivityResultLauncher<Uri>) {
@@ -60,7 +67,8 @@ class WebViewFileChooser {
         isMultiple: Boolean = false
     ) {
         try {
-            launcher.launch(pickerIntent(mimeTypes(acceptTypes), isMultiple))
+            val array = acceptTypes.map { it as String? }.toTypedArray()
+            launcher.launch(pickerIntent(mimeTypes(array), isMultiple))
         } catch (_: Exception) {
             cancelPendingCallback()
         }
@@ -75,8 +83,8 @@ class WebViewFileChooser {
             putExtra(Intent.EXTRA_ALLOW_MULTIPLE, allowMultiple)
         }
 
-    private fun mimeTypes(types: Array<String>): List<String> =
-        types.flatMap { it.split(',') }.map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+    private fun mimeTypes(types: Array<String?>): List<String> =
+        types.filterNotNull().flatMap { it.split(',') }.map { it.trim().lowercase() }.filter { it.isNotEmpty() }
             .map { value ->
                 if (value.startsWith(".")) MimeTypeMap.getSingleton()
                     .getMimeTypeFromExtension(value.drop(1)) ?: "*/*"
@@ -117,13 +125,6 @@ class WebViewFileChooser {
         } else {
             complete(safe.toTypedArray())
         }
-    }
-
-    fun cancelPendingCallback() {
-        cameraUri = null
-        cameraFile?.delete()
-        cameraFile = null
-        complete(null)
     }
 
     // Activity-result and WebChromeClient callbacks run on the main thread.
