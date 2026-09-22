@@ -6,6 +6,7 @@ import android.net.Uri
 import android.net.http.SslError
 import android.os.Handler
 import android.os.Looper
+import android.os.Message
 import android.util.Log
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -60,6 +61,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -204,6 +206,8 @@ fun NocoBaseWebViewScreen(
             onRedirectToReLogin = { onRedirectToReLogin(workspaceId) }
         )
     }
+    // WebViewClient 只创建一次，因此通过 updated state 始终读取最新的工作空间地址和设置。
+    val currentUrlHandler = rememberUpdatedState(urlHandler)
 
     val (savedIsRightSide, savedVerticalRatio) = viewModel.floatingBallPosition.collectAsState().value
     val idleAlpha by viewModel.floatingBallIdleAlpha.collectAsState()
@@ -256,6 +260,13 @@ fun NocoBaseWebViewScreen(
 
             Log.d("NocoBaseWebView", "WebView created | visibility=$visibility alpha=$alpha width=$width height=$height")
         }
+    }
+
+    // Compose 设置变更即时同步到当前 WebView 实例，无需刷新页面。
+    LaunchedEffect(webViewZoomEnabled) {
+        webView.settings.setSupportZoom(webViewZoomEnabled)
+        webView.settings.builtInZoomControls = webViewZoomEnabled
+        webView.settings.displayZoomControls = false
     }
 
     // 启动过渡控制
@@ -356,7 +367,7 @@ fun NocoBaseWebViewScreen(
                             ): Boolean {
                                 val url = request?.url?.toString() ?: ""
                                 redirectCount++
-                                return urlHandler.handleUrlLoading(url)
+                                return currentUrlHandler.value.handleUrlLoading(url)
                             }
 
                             override fun onPageStarted(
@@ -466,6 +477,54 @@ fun NocoBaseWebViewScreen(
                                     isLoading = false
                                     readyDetector.checkReadiness(view)
                                 }
+                            }
+
+                            override fun onCreateWindow(
+                                view: WebView?,
+                                isDialog: Boolean,
+                                isUserGesture: Boolean,
+                                resultMsg: Message?
+                            ): Boolean {
+                                val message = resultMsg ?: return false
+                                val transport = message.obj as? WebView.WebViewTransport ?: return false
+                                val popupWebView = WebView(context)
+                                var targetHandled = false
+
+                                fun handleTarget(url: String?) {
+                                    if (targetHandled || url.isNullOrBlank()) return
+                                    targetHandled = true
+
+                                    // 开启外部浏览器设置时由处理器拉起系统浏览器；
+                                    // 关闭时（以及同源链接）在当前 WebView 中继续打开。
+                                    if (!currentUrlHandler.value.handleUrlLoading(url)) {
+                                        view?.loadUrl(url)
+                                    }
+
+                                    popupWebView.stopLoading()
+                                    popupWebView.destroy()
+                                }
+
+                                popupWebView.webViewClient = object : WebViewClient() {
+                                    override fun shouldOverrideUrlLoading(
+                                        popupView: WebView?,
+                                        request: WebResourceRequest?
+                                    ): Boolean {
+                                        handleTarget(request?.url?.toString())
+                                        return true
+                                    }
+
+                                    override fun onPageStarted(
+                                        popupView: WebView?,
+                                        url: String?,
+                                        favicon: Bitmap?
+                                    ) {
+                                        handleTarget(url)
+                                    }
+                                }
+
+                                transport.webView = popupWebView
+                                message.sendToTarget()
+                                return true
                             }
 
                             override fun onShowFileChooser(
@@ -647,10 +706,7 @@ fun NocoBaseWebViewScreen(
             if (showSettingsSheet) {
                 WorkspaceSettingsSheet(
                     viewModel = viewModel,
-                    onDismiss = { showSettingsSheet = false },
-                    onReloadWebView = {
-                        webView.reload()
-                    }
+                    onDismiss = { showSettingsSheet = false }
                 )
             }
 

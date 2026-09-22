@@ -17,6 +17,8 @@ object NocoBaseWebViewManager {
 
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
+        settings.javaScriptCanOpenWindowsAutomatically = true
+        settings.setSupportMultipleWindows(true)
 
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true

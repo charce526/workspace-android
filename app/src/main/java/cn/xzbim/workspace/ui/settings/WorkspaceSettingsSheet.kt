@@ -1,11 +1,8 @@
 package cn.xzbim.workspace.ui.settings
 
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -21,18 +18,16 @@ enum class SheetView {
 }
 
 /**
- * 在 Workspace WebView 页面中弹出的设置/关于 BottomSheet 浮层（保持 WebView 100% 同一实例与页面状态，不重新加载页面）
+ * 在 Workspace WebView 页面中弹出的设置/关于 BottomSheet 浮层（保持 WebView 100% 同一实例与页面状态）
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WorkspaceSettingsSheet(
     viewModel: WorkspaceViewModel,
-    onDismiss: () -> Unit,
-    onReloadWebView: () -> Unit
+    onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var currentView by remember { mutableStateOf(SheetView.SETTINGS) }
-    var showReloadConfirmDialog by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -43,10 +38,7 @@ fun WorkspaceSettingsSheet(
             SheetView.SETTINGS -> {
                 SettingsContent(
                     viewModel = viewModel,
-                    onNavigateToAbout = { currentView = SheetView.ABOUT },
-                    onExternalBrowserSettingChanged = {
-                        showReloadConfirmDialog = true
-                    }
+                    onNavigateToAbout = { currentView = SheetView.ABOUT }
                 )
             }
             SheetView.ABOUT -> {
@@ -55,27 +47,5 @@ fun WorkspaceSettingsSheet(
                 )
             }
         }
-    }
-
-    if (showReloadConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showReloadConfirmDialog = false },
-            title = { Text("设置已更新") },
-            text = { Text("“外部浏览器打开新窗口链接”设置更改需要刷新当前网页后完全生效。是否立即刷新网页？") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showReloadConfirmDialog = false
-                    onDismiss()
-                    onReloadWebView()
-                }) {
-                    Text("立即刷新")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showReloadConfirmDialog = false }) {
-                    Text("取消")
-                }
-            }
-        )
     }
 }

@@ -21,6 +21,7 @@ class WebViewFileChooser {
 
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var pendingCameraUri: Uri? = null
+    private var pendingCameraFile: File? = null
 
     fun prepareFileChooser(
         filePathCallback: ValueCallback<Array<Uri>>?,
@@ -43,6 +44,7 @@ class WebViewFileChooser {
                 photoFile
             )
             pendingCameraUri = photoUri
+            pendingCameraFile = photoFile
             Log.d("NocoBaseUpload", "Launching camera photo capture...")
             cameraLauncher.launch(photoUri)
         } catch (e: Exception) {
@@ -130,17 +132,16 @@ class WebViewFileChooser {
         filePathCallback = null
 
         val uri = pendingCameraUri
+        val photoFile = pendingCameraFile
         pendingCameraUri = null
+        pendingCameraFile = null
 
-        if (success && uri != null) {
-            try {
-                context.grantUriPermission(context.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            } catch (_: Exception) {}
-
-            Log.d("NocoBaseUpload", "Camera photo captured successfully: $uri")
+        if (success && uri != null && photoFile?.exists() == true && photoFile.length() > 0L) {
+            Log.d("NocoBaseUpload", "Camera photo captured successfully: $uri (size=${photoFile.length()})")
             postCallbackResult(callback, arrayOf(uri))
         } else {
-            Log.d("NocoBaseUpload", "Camera photo capture cancelled or failed")
+            photoFile?.delete()
+            Log.d("NocoBaseUpload", "Camera photo capture cancelled, empty or failed")
             postCallbackResult(callback, null)
         }
     }
@@ -183,13 +184,19 @@ class WebViewFileChooser {
 
     private fun copyUriToCache(context: Context, sourceUri: Uri): Uri? {
         return try {
-            val inputStream = context.contentResolver.openInputStream(sourceUri) ?: return null
             val ext = getFileExtensionFromUri(context, sourceUri)
             val uploadDir = File(context.cacheDir, "upload_temps").apply { if (!exists()) mkdirs() }
             val tempFile = File(uploadDir, "upload_${System.currentTimeMillis()}_${(0..9999).random()}$ext")
 
-            tempFile.outputStream().use { output ->
-                inputStream.copyTo(output)
+            context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                tempFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            } ?: return null
+
+            if (!tempFile.exists() || tempFile.length() <= 0L) {
+                tempFile.delete()
+                return null
             }
 
             val cachedUri = FileProvider.getUriForFile(
@@ -198,9 +205,8 @@ class WebViewFileChooser {
                 tempFile
             )
 
-            context.grantUriPermission(context.packageName, cachedUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            context.contentResolver.takePersistableUriPermission(cachedUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-
+            // FileProvider URI 属于应用自身，不能调用 takePersistableUriPermission；
+            // WebView 与应用处于同一进程，可直接读取该临时 URI。
             Log.d("NocoBaseUpload", "Copied sourceUri $sourceUri to cache: $cachedUri (size=${tempFile.length()})")
             cachedUri
         } catch (e: Exception) {
@@ -237,6 +243,8 @@ class WebViewFileChooser {
         val callback = filePathCallback
         filePathCallback = null
         pendingCameraUri = null
+        pendingCameraFile?.delete()
+        pendingCameraFile = null
         postCallbackResult(callback, null)
     }
 

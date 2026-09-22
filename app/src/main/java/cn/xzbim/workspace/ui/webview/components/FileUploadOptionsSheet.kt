@@ -67,7 +67,6 @@ fun FileUploadOptionsSheet(
                     )
                 },
                 modifier = Modifier.clickable {
-                    onDismiss()
                     onTakePhoto()
                 }
             )
@@ -86,7 +85,6 @@ fun FileUploadOptionsSheet(
                     )
                 },
                 modifier = Modifier.clickable {
-                    onDismiss()
                     onSelectGallery()
                 }
             )
@@ -105,7 +103,6 @@ fun FileUploadOptionsSheet(
                     )
                 },
                 modifier = Modifier.clickable {
-                    onDismiss()
                     onSelectFile()
                 }
             )
