@@ -1,0 +1,37 @@
+<resources>
+    <string name="app_name">工作空间</string>
+    <string name="my_workspaces_title">工作空间</string>
+    <string name="my_workspaces">我的工作空间</string>
+    <string name="add_workspace">添加工作空间</string>
+    <string name="edit_workspace">编辑工作空间</string>
+    <string name="settings">设置</string>
+    <string name="about">关于</string>
+    <string name="refresh">刷新</string>
+    <string name="home">首页</string>
+    <string name="exit_workspace">退出空间</string>
+    <string name="press_again_to_exit">再按一次返回键退出工作空间</string>
+    <string name="entering">正在进入</string>
+    <string name="connecting_workspace">正在连接工作空间…</string>
+    <string name="network_disconnected">网络连接已断开，请检查网络</string>
+    <string name="network_restored">网络已恢复</string>
+    <string name="retry">重试</string>
+    <string name="cancel">取消</string>
+    <string name="confirm">确定</string>
+    <string name="delete">删除</string>
+    <string name="save">保存</string>
+    <string name="login">登录</string>
+    <string name="relogin">重新登录</string>
+    <string name="clear_cache">清除缓存</string>
+    <string name="clear_site_data">清除网站数据</string>
+    <string name="launch_and_login">启动与登录</string>
+    <string name="appearance">外观</string>
+    <string name="floating_control">悬浮控制</string>
+    <string name="browsing_experience">浏览体验</string>
+    <string name="browser_and_storage">浏览器与存储</string>
+    <string name="about_app_description">工作空间是一款用于连接和使用 NocoBase 服务的通用 Android 客户端，支持管理多个独立工作空间。</string>
+    <string name="author">开发者</string>
+    <string name="author_name">偕作BIM</string>
+    <string name="official_website">NocoBase 的官方网站</string>
+    <string name="github_repository">NocoBase Github</string>
+    <string name="about_disclaimer">本应用为独立第三方客户端，与 NocoBase 官方不存在隶属或授权关系。NocoBase 名称及相关标识归其相应权利人所有。</string>
+</resources>
