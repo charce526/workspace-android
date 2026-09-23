@@ -6,22 +6,24 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import cn.xzbim.workspace.data.local.dao.WorkspaceNotificationStateDao
 import cn.xzbim.workspace.data.local.entity.WorkspaceEntity
+import cn.xzbim.workspace.data.local.entity.WorkspaceNotificationStateEntity
 
 /**
- * 应用 Room 数据库，管理表结构与版本（数据库名称：`workspace_database`，升级为版本 2 支持默认工作空间字段）
+ * 应用 Room 数据库（数据库名称：`workspace_database`，升级为版本 3 支持站内消息未读数与退避状态表）
  */
 @Database(
-    entities = [WorkspaceEntity::class],
-    version = 2,
+    entities = [WorkspaceEntity::class, WorkspaceNotificationStateEntity::class],
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun workspaceDao(): WorkspaceDao
+    abstract fun workspaceNotificationStateDao(): WorkspaceNotificationStateDao
 
     companion object {
-        // Version 1 predates the default-workspace flag. Never silently erase saved workspaces.
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 val columns = mutableSetOf<String>()
@@ -35,6 +37,34 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val columns = mutableSetOf<String>()
+                db.query("PRAGMA table_info(workspaces)").use { cursor ->
+                    val nameIndex = cursor.getColumnIndexOrThrow("name")
+                    while (cursor.moveToNext()) columns.add(cursor.getString(nameIndex))
+                }
+                if ("notification_count_enabled" !in columns) {
+                    db.execSQL("ALTER TABLE workspaces ADD COLUMN notification_count_enabled INTEGER NOT NULL DEFAULT 1")
+                }
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `workspace_notification_states` (
+                        `workspaceId` TEXT NOT NULL,
+                        `unread_count` INTEGER NOT NULL DEFAULT 0,
+                        `status` TEXT NOT NULL DEFAULT 'AVAILABLE',
+                        `failure_count` INTEGER NOT NULL DEFAULT 0,
+                        `last_attempt_at` INTEGER NOT NULL DEFAULT 0,
+                        `last_success_at` INTEGER NOT NULL DEFAULT 0,
+                        `next_retry_at` INTEGER NOT NULL DEFAULT 0,
+                        `last_error_type` TEXT,
+                        PRIMARY KEY(`workspaceId`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -44,7 +74,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "workspace_database"
-                ).addMigrations(MIGRATION_1_2).build()
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
                 INSTANCE = instance
                 instance
             }

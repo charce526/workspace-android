@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Tune
@@ -70,6 +71,7 @@ fun SettingsContent(
     val idleAlpha by viewModel.floatingBallIdleAlpha.collectAsState()
     val keepScreenOn by viewModel.keepScreenOn.collectAsState()
     val openLinksInExternalBrowser by viewModel.openLinksInExternalBrowser.collectAsState()
+    val globalNotificationCountEnabled by viewModel.globalNotificationCountEnabled.collectAsState()
 
     var showThemeDialog by remember { mutableStateOf(false) }
     var showClearCacheDialog by remember { mutableStateOf(false) }
@@ -115,7 +117,31 @@ fun SettingsContent(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // 【分组 2：外观与悬浮控制】
+        // 【分组 2：通知设置】
+        SectionHeader(title = "通知设置", icon = Icons.Default.Notifications)
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column {
+                ListItem(
+                    headlineContent = { Text("获取未读站内消息数量") },
+                    supportingContent = { Text("关闭后，应用不会从任何 NocoBase 实例获取未读站内消息数量") },
+                    trailingContent = {
+                        Switch(
+                            checked = globalNotificationCountEnabled,
+                            onCheckedChange = { viewModel.setGlobalNotificationCountEnabled(it) }
+                        )
+                    }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // 【分组 3：外观与悬浮控制】
         SectionHeader(title = stringResource(id = R.string.appearance), icon = Icons.Default.Palette)
 
         Surface(
@@ -184,7 +210,7 @@ fun SettingsContent(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // 【分组 3：浏览体验】
+        // 【分组 4：浏览体验】
         SectionHeader(title = stringResource(id = R.string.browsing_experience), icon = Icons.Default.Web)
 
         Surface(
@@ -222,7 +248,7 @@ fun SettingsContent(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // 【分组 4：存储管理】
+        // 【分组 5：存储管理】
         SectionHeader(title = "存储管理", icon = Icons.Default.Tune)
 
         Surface(
@@ -265,7 +291,7 @@ fun SettingsContent(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // 【分组 5：关于】
+        // 【分组 6：关于】
         SectionHeader(title = stringResource(id = R.string.about), icon = Icons.Default.Info)
 
         Surface(

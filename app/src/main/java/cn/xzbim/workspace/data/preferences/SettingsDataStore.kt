@@ -5,14 +5,14 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
-import androidx.datastore.preferences.core.emptyPreferences
-import java.io.IOException
 import kotlinx.coroutines.flow.map
+import java.io.IOException
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "workspace_settings")
 
@@ -21,7 +21,7 @@ enum class ThemeMode {
 }
 
 /**
- * DataStore Preferences 用于管理应用配置（主题模式、启动跳转、记住登录、悬浮球设置、缩放、屏幕常亮及外部链接处理等）
+ * DataStore Preferences 用于管理应用配置（主题模式、启动跳转、记住登录、悬浮球设置、缩放、屏幕常亮、站内消息全局开关等）
  */
 class SettingsDataStore(private val context: Context) {
 
@@ -35,6 +35,7 @@ class SettingsDataStore(private val context: Context) {
         val KEY_WEBVIEW_ZOOM_ENABLED = booleanPreferencesKey("webview_zoom_enabled")
         val KEY_KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val KEY_OPEN_LINKS_IN_EXTERNAL_BROWSER = booleanPreferencesKey("open_links_in_external_browser")
+        val KEY_GLOBAL_NOTIFICATION_COUNT_ENABLED = booleanPreferencesKey("global_notification_count_enabled")
     }
 
     private val preferencesFlow = context.dataStore.data.catch { error ->
@@ -79,6 +80,10 @@ class SettingsDataStore(private val context: Context) {
 
     val openLinksInExternalBrowserFlow: Flow<Boolean> = preferencesFlow.map { preferences ->
         preferences[KEY_OPEN_LINKS_IN_EXTERNAL_BROWSER] ?: false
+    }
+
+    val globalNotificationCountEnabledFlow: Flow<Boolean> = preferencesFlow.map { preferences ->
+        preferences[KEY_GLOBAL_NOTIFICATION_COUNT_ENABLED] ?: true
     }
 
     suspend fun setAutoEnterLastWorkspace(enabled: Boolean) {
@@ -135,6 +140,12 @@ class SettingsDataStore(private val context: Context) {
     suspend fun setOpenLinksInExternalBrowser(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[KEY_OPEN_LINKS_IN_EXTERNAL_BROWSER] = enabled
+        }
+    }
+
+    suspend fun setGlobalNotificationCountEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_GLOBAL_NOTIFICATION_COUNT_ENABLED] = enabled
         }
     }
 }

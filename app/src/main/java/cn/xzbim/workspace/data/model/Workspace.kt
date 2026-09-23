@@ -10,5 +10,6 @@ data class Workspace(
     val username: String,
     val lastUsedTime: Long = System.currentTimeMillis(),
     val isLastUsed: Boolean = false,
-    val isDefault: Boolean = false
+    val isDefault: Boolean = false,
+    val notificationCountEnabled: Boolean = true
 )

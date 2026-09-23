@@ -8,8 +8,8 @@ import cn.xzbim.workspace.data.preferences.ThemeMode
 import cn.xzbim.workspace.network.result.LoginResult
 import cn.xzbim.workspace.network.result.SessionCheckResult
 import cn.xzbim.workspace.repository.WorkspaceRepository
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -84,14 +84,39 @@ class WorkspaceViewModel(
         initialValue = false
     )
 
-    // 工作空间打开竞态保护状态
+    val globalNotificationCountEnabled: StateFlow<Boolean> = repository.globalNotificationCountEnabledFlow.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = true
+    )
+
     private val _isOpeningWorkspace = MutableStateFlow(false)
     val isOpeningWorkspace: StateFlow<Boolean> = _isOpeningWorkspace.asStateFlow()
 
     private val _openingWorkspaceId = MutableStateFlow<String?>(null)
     val openingWorkspaceId: StateFlow<String?> = _openingWorkspaceId.asStateFlow()
 
-    private var openingJob: Job? = null
+    private var openWorkspaceJob: Job? = null
+
+    fun setAutoEnterLastWorkspace(enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                repository.setAutoEnterLastWorkspace(enabled)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun setRememberLoginState(enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                repository.setRememberLoginState(enabled)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 
     fun saveFloatingBallPosition(isRightSide: Boolean, verticalRatio: Float) {
         viewModelScope.launch {
@@ -117,26 +142,6 @@ class WorkspaceViewModel(
         viewModelScope.launch {
             try {
                 repository.resetFloatingBallPosition()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
-    fun setAutoEnterLastWorkspace(enabled: Boolean) {
-        viewModelScope.launch {
-            try {
-                repository.setAutoEnterLastWorkspace(enabled)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
-    fun setRememberLoginState(enabled: Boolean) {
-        viewModelScope.launch {
-            try {
-                repository.setRememberLoginState(enabled)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -183,13 +188,20 @@ class WorkspaceViewModel(
         }
     }
 
+    fun setGlobalNotificationCountEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                repository.setGlobalNotificationCountEnabled(enabled)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     suspend fun getWorkspaceById(id: String): Workspace? {
         return repository.getWorkspace(id)
     }
 
-    /**
-     * 防竞态：带加载状态与防重入保护的工作空间打开校验
-     */
     fun checkSessionAndOpen(
         workspaceId: String,
         onValid: () -> Unit,
@@ -201,10 +213,9 @@ class WorkspaceViewModel(
         _isOpeningWorkspace.value = true
         _openingWorkspaceId.value = workspaceId
 
-        openingJob?.cancel()
-        openingJob = viewModelScope.launch {
+        openWorkspaceJob?.cancel()
+        openWorkspaceJob = viewModelScope.launch {
             try {
-                repository.setLastUsedWorkspace(workspaceId)
                 val result = repository.checkSession(workspaceId)
                 if (result is SessionCheckResult.Valid) {
                     onValid()
@@ -230,15 +241,17 @@ class WorkspaceViewModel(
         serverUrl: String,
         username: String,
         password: String,
+        notificationCountEnabled: Boolean = true,
         onResult: (LoginResult) -> Unit
     ) {
         viewModelScope.launch {
-            val result = runLogin { repository.signInAndSaveWorkspace(
+            val result = repository.signInAndSaveWorkspace(
                 name = name,
                 serverUrl = serverUrl,
                 username = username,
-                password = password
-            ) }
+                password = password,
+                notificationCountEnabled = notificationCountEnabled
+            )
             onResult(result)
         }
     }
@@ -249,10 +262,10 @@ class WorkspaceViewModel(
         onResult: (LoginResult) -> Unit
     ) {
         viewModelScope.launch {
-            val result = runLogin { repository.reLoginAndUpdateWorkspace(
+            val result = repository.reLoginAndUpdateWorkspace(
                 workspaceId = workspaceId,
                 password = password
-            ) }
+            )
             onResult(result)
         }
     }
@@ -262,13 +275,7 @@ class WorkspaceViewModel(
         onResult: (SessionCheckResult) -> Unit
     ) {
         viewModelScope.launch {
-            val result = try {
-                repository.checkSession(workspaceId)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                SessionCheckResult.Unavailable()
-            }
+            val result = repository.checkSession(workspaceId)
             onResult(result)
         }
     }
@@ -279,28 +286,31 @@ class WorkspaceViewModel(
         serverUrl: String,
         username: String,
         password: String? = null,
+        notificationCountEnabled: Boolean = true,
         onResult: (LoginResult) -> Unit
     ) {
         viewModelScope.launch {
-            val result = runLogin { repository.updateWorkspaceWithAuth(
+            val result = repository.updateWorkspaceWithAuth(
                 id = id,
                 name = name,
                 serverUrl = serverUrl,
                 username = username,
-                password = password
-            ) }
+                password = password,
+                notificationCountEnabled = notificationCountEnabled
+            )
             onResult(result)
         }
     }
 
-    private suspend fun runLogin(action: suspend () -> LoginResult): LoginResult =
-        try {
-            action()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            LoginResult.NetworkError("无法保存或验证工作空间，请检查存储空间与服务器地址后重试")
+    fun updateWorkspaceNotificationCountEnabled(id: String, enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                repository.updateWorkspaceNotificationCountEnabled(id, enabled)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
+    }
 
     fun deleteWorkspace(id: String) {
         viewModelScope.launch {

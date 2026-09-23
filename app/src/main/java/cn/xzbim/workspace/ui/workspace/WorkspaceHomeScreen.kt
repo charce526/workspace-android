@@ -247,6 +247,11 @@ fun WorkspaceHomeScreen(
                             onUnsetDefaultClick = {
                                 viewModel.unsetDefaultWorkspace(workspace.id)
                                 Toast.makeText(context, "已取消默认工作空间", Toast.LENGTH_SHORT).show()
+                            },
+                            onToggleNotificationCountClick = { enabled ->
+                                viewModel.updateWorkspaceNotificationCountEnabled(workspace.id, enabled)
+                                val msg = if (enabled) "已开启该工作空间的未读消息获取" else "已关闭该工作空间的未读消息获取"
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                             }
                         )
                     }

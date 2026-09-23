@@ -24,9 +24,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -51,7 +54,7 @@ import cn.xzbim.workspace.ui.theme.AppSpacing
 import cn.xzbim.workspace.viewmodel.WorkspaceViewModel
 
 /**
- * 添加工作空间页面（控制表单间距与按钮尺寸，克制 M3 样式）
+ * 添加工作空间页面（控制表单间距与按钮尺寸，支持配置未读消息获取开关）
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,6 +70,7 @@ fun AddWorkspaceScreen(
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+    var notificationCountEnabled by remember { mutableStateOf(true) }
 
     var isLoading by remember { mutableStateOf(false) }
 
@@ -86,7 +90,8 @@ fun AddWorkspaceScreen(
             name = name,
             serverUrl = serverUrl,
             username = username,
-            password = password
+            password = password,
+            notificationCountEnabled = notificationCountEnabled
         ) { result ->
             isLoading = false
             when (result) {
@@ -196,6 +201,25 @@ fun AddWorkspaceScreen(
                 ),
                 modifier = Modifier.fillMaxWidth()
             )
+
+            Spacer(modifier = Modifier.height(AppSpacing.lg))
+
+            Surface(
+                shape = AppShapes.small,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                ListItem(
+                    headlineContent = { Text("获取未读站内消息数量") },
+                    supportingContent = { Text("开启后，应用会定期从此 NocoBase 实例读取当前账号的未读站内消息数量，仅显示数量，不读取通知正文。") },
+                    trailingContent = {
+                        Switch(
+                            checked = notificationCountEnabled,
+                            onCheckedChange = { notificationCountEnabled = it }
+                        )
+                    }
+                )
+            }
 
             Spacer(modifier = Modifier.height(AppSpacing.section))
 

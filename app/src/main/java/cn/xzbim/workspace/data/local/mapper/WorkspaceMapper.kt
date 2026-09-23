@@ -11,7 +11,8 @@ fun WorkspaceEntity.toDomainModel(): Workspace {
         username = username,
         lastUsedTime = lastUsedAt,
         isLastUsed = isLastUsed,
-        isDefault = isDefault
+        isDefault = isDefault,
+        notificationCountEnabled = notificationCountEnabled
     )
 }
 
@@ -25,6 +26,7 @@ fun Workspace.toEntity(): WorkspaceEntity {
         updatedAt = System.currentTimeMillis(),
         lastUsedAt = lastUsedTime,
         isLastUsed = isLastUsed,
-        isDefault = isDefault
+        isDefault = isDefault,
+        notificationCountEnabled = notificationCountEnabled
     )
 }

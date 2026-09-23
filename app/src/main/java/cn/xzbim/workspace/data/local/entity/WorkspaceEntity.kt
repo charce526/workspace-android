@@ -34,5 +34,8 @@ data class WorkspaceEntity(
     val isLastUsed: Boolean = false,
 
     @ColumnInfo(name = "is_default")
-    val isDefault: Boolean = false
+    val isDefault: Boolean = false,
+
+    @ColumnInfo(name = "notification_count_enabled")
+    val notificationCountEnabled: Boolean = true
 )

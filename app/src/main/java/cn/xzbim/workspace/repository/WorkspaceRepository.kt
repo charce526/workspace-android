@@ -47,6 +47,7 @@ class WorkspaceRepository(
     val webViewZoomEnabledFlow: Flow<Boolean> = settingsDataStore.webViewZoomEnabledFlow
     val keepScreenOnFlow: Flow<Boolean> = settingsDataStore.keepScreenOnFlow
     val openLinksInExternalBrowserFlow: Flow<Boolean> = settingsDataStore.openLinksInExternalBrowserFlow
+    val globalNotificationCountEnabledFlow: Flow<Boolean> = settingsDataStore.globalNotificationCountEnabledFlow
 
     val isInitializedFlow: Flow<Boolean> = combine(
         workspacesFlow,
@@ -71,12 +72,6 @@ class WorkspaceRepository(
 
     suspend fun setRememberLoginState(enabled: Boolean) {
         settingsDataStore.setRememberLoginState(enabled)
-        if (!enabled) {
-            val list = workspaceDao.getAllWorkspaces()
-            list.forEach { ws ->
-                credentialStore.savePassword(ws.id, "")
-            }
-        }
     }
 
     suspend fun setThemeMode(mode: ThemeMode) {
@@ -93,6 +88,10 @@ class WorkspaceRepository(
 
     suspend fun setOpenLinksInExternalBrowser(enabled: Boolean) {
         settingsDataStore.setOpenLinksInExternalBrowser(enabled)
+    }
+
+    suspend fun setGlobalNotificationCountEnabled(enabled: Boolean) {
+        settingsDataStore.setGlobalNotificationCountEnabled(enabled)
     }
 
     suspend fun getWorkspace(id: String): Workspace? {
@@ -122,7 +121,8 @@ class WorkspaceRepository(
         name: String,
         serverUrl: String,
         username: String,
-        password: String
+        password: String,
+        notificationCountEnabled: Boolean = true
     ): LoginResult {
         val formattedUrl = NocoBaseApiClient.normalizeServerUrl(serverUrl)
 
@@ -131,14 +131,14 @@ class WorkspaceRepository(
         if (loginResult is LoginResult.Success) {
             val id = UUID.randomUUID().toString()
 
-
             val newWorkspace = Workspace(
                 id = id,
                 name = name.ifBlank { "NocoBase 工作空间" },
                 serverUrl = formattedUrl,
                 username = username,
                 lastUsedTime = System.currentTimeMillis(),
-                isLastUsed = true
+                isLastUsed = true,
+                notificationCountEnabled = notificationCountEnabled
             )
 
             workspaceDao.insertAndMarkLastUsed(newWorkspace.toEntity())
@@ -176,7 +176,7 @@ class WorkspaceRepository(
                 updatedAt = System.currentTimeMillis()
             )
 
-            workspaceDao.updateAndMarkLastUsed(updatedEntity)
+            workspaceDao.updateWorkspace(updatedEntity)
             credentialStore.saveToken(workspaceId, loginResult.token)
 
             val rememberLogin = settingsDataStore.rememberLoginStateFlow.first()
@@ -202,7 +202,7 @@ class WorkspaceRepository(
 
         if (!token.isNullOrBlank()) {
             val result = authService.checkSession(workspace.serverUrl, token)
-            if (result !is SessionCheckResult.ExpiredOrUnauthorized) {
+            if (result is SessionCheckResult.Valid) {
                 return result
             }
         }
@@ -231,7 +231,8 @@ class WorkspaceRepository(
         name: String,
         serverUrl: String,
         username: String,
-        password: String? = null
+        password: String? = null,
+        notificationCountEnabled: Boolean = true
     ): LoginResult {
         val existing = workspaceDao.getWorkspaceById(id) ?: return LoginResult.NetworkError("工作空间不存在")
         val formattedUrl = NocoBaseApiClient.normalizeServerUrl(serverUrl)
@@ -251,6 +252,7 @@ class WorkspaceRepository(
                 name = name.ifBlank { existing.name },
                 serverUrl = formattedUrl,
                 username = username,
+                notificationCountEnabled = notificationCountEnabled,
                 updatedAt = System.currentTimeMillis()
             )
 
@@ -294,5 +296,10 @@ class WorkspaceRepository(
 
     suspend fun getDefaultWorkspace(): Workspace? {
         return workspaceDao.getDefaultWorkspace()?.toDomainModel()
+    }
+
+    suspend fun updateWorkspaceNotificationCountEnabled(id: String, enabled: Boolean) {
+        val existing = workspaceDao.getWorkspaceById(id) ?: return
+        workspaceDao.updateWorkspace(existing.copy(notificationCountEnabled = enabled, updatedAt = System.currentTimeMillis()))
     }
 }

@@ -16,6 +16,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Star
@@ -58,6 +60,7 @@ fun WorkspaceCard(
     onDeleteClick: () -> Unit,
     onSetDefaultClick: () -> Unit,
     onUnsetDefaultClick: () -> Unit,
+    onToggleNotificationCountClick: ((Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -232,6 +235,48 @@ fun WorkspaceCard(
                                     onSetDefaultClick()
                                 }
                             )
+                        }
+
+                        if (onToggleNotificationCountClick != null) {
+                            if (workspace.notificationCountEnabled) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.NotificationsOff,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("关闭未读消息获取")
+                                        }
+                                    },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onToggleNotificationCountClick(false)
+                                    }
+                                )
+                            } else {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.Notifications,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("开启未读消息获取")
+                                        }
+                                    },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onToggleNotificationCountClick(true)
+                                    }
+                                )
+                            }
                         }
 
                         DropdownMenuItem(
