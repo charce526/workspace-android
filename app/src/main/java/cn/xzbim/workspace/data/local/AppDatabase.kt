@@ -11,11 +11,11 @@ import cn.xzbim.workspace.data.local.entity.WorkspaceEntity
 import cn.xzbim.workspace.data.local.entity.WorkspaceNotificationStateEntity
 
 /**
- * 应用 Room 数据库（数据库名称：`workspace_database`，升级为版本 3 支持站内消息未读数与退避状态表）
+ * 应用 Room 数据库（数据库名称：`workspace_database`，升级为版本 4 支持工作空间拖拽排序字段 `order_index`）
  */
 @Database(
     entities = [WorkspaceEntity::class, WorkspaceNotificationStateEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -65,6 +65,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val columns = mutableSetOf<String>()
+                db.query("PRAGMA table_info(workspaces)").use { cursor ->
+                    val nameIndex = cursor.getColumnIndexOrThrow("name")
+                    while (cursor.moveToNext()) columns.add(cursor.getString(nameIndex))
+                }
+                if ("order_index" !in columns) {
+                    db.execSQL("ALTER TABLE workspaces ADD COLUMN order_index INTEGER NOT NULL DEFAULT 0")
+                }
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -74,7 +87,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "workspace_database"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
                 INSTANCE = instance
                 instance
             }

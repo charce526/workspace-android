@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
@@ -48,13 +49,15 @@ import cn.xzbim.workspace.ui.theme.AppShapes
 import cn.xzbim.workspace.ui.theme.AppSpacing
 
 /**
- * 工作空间 M3 精致卡片组件（放大左侧图标、紧凑文字间距与精细菜单项）
+ * 工作空间 M3 精致卡片组件（支持长按跟手拖拽、未读数量 Badge 标签与精细菜单项）
  */
 @Composable
 fun WorkspaceCard(
     workspace: Workspace,
     isLoading: Boolean,
     enabled: Boolean,
+    badgeText: String? = null,
+    isDragging: Boolean = false,
     onClick: () -> Unit,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
@@ -68,12 +71,14 @@ fun WorkspaceCard(
     Card(
         shape = AppShapes.medium,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            containerColor = if (isDragging) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainerHigh
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (isDragging) 8.dp else 0.dp
+        ),
         modifier = modifier
             .fillMaxWidth()
-            .clickable(enabled = enabled && !isLoading) { onClick() }
+            .clickable(enabled = enabled && !isLoading && !isDragging) { onClick() }
     ) {
         Row(
             modifier = Modifier
@@ -111,8 +116,24 @@ fun WorkspaceCard(
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
+
+                    if (!badgeText.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        ) {
+                            Text(
+                                text = badgeText,
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
 
                     if (workspace.isDefault) {
                         Spacer(modifier = Modifier.width(6.dp))

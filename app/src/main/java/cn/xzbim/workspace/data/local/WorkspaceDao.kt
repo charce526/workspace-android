@@ -41,10 +41,20 @@ interface WorkspaceDao {
         updateWorkspace(workspace)
     }
 
-    @Query("SELECT * FROM workspaces ORDER BY is_default DESC, last_used_at DESC")
+    @Transaction
+    suspend fun updateWorkspacesOrder(orderedWorkspaceIds: List<String>) {
+        orderedWorkspaceIds.forEachIndexed { index, id ->
+            updateOrderIndex(id, index)
+        }
+    }
+
+    @Query("UPDATE workspaces SET order_index = :orderIndex WHERE id = :id")
+    suspend fun updateOrderIndex(id: String, orderIndex: Int)
+
+    @Query("SELECT * FROM workspaces ORDER BY is_default DESC, order_index ASC, last_used_at DESC")
     fun getAllWorkspacesFlow(): Flow<List<WorkspaceEntity>>
 
-    @Query("SELECT * FROM workspaces")
+    @Query("SELECT * FROM workspaces ORDER BY is_default DESC, order_index ASC, last_used_at DESC")
     suspend fun getAllWorkspaces(): List<WorkspaceEntity>
 
     @Query("SELECT * FROM workspaces WHERE id = :id LIMIT 1")

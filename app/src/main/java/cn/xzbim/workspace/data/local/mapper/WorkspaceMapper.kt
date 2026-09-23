@@ -12,7 +12,8 @@ fun WorkspaceEntity.toDomainModel(): Workspace {
         lastUsedTime = lastUsedAt,
         isLastUsed = isLastUsed,
         isDefault = isDefault,
-        notificationCountEnabled = notificationCountEnabled
+        notificationCountEnabled = notificationCountEnabled,
+        orderIndex = orderIndex
     )
 }
 
@@ -27,6 +28,7 @@ fun Workspace.toEntity(): WorkspaceEntity {
         lastUsedAt = lastUsedTime,
         isLastUsed = isLastUsed,
         isDefault = isDefault,
-        notificationCountEnabled = notificationCountEnabled
+        notificationCountEnabled = notificationCountEnabled,
+        orderIndex = orderIndex
     )
 }

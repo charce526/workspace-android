@@ -11,5 +11,6 @@ data class Workspace(
     val lastUsedTime: Long = System.currentTimeMillis(),
     val isLastUsed: Boolean = false,
     val isDefault: Boolean = false,
-    val notificationCountEnabled: Boolean = true
+    val notificationCountEnabled: Boolean = true,
+    val orderIndex: Int = 0
 )

@@ -37,5 +37,8 @@ data class WorkspaceEntity(
     val isDefault: Boolean = false,
 
     @ColumnInfo(name = "notification_count_enabled")
-    val notificationCountEnabled: Boolean = true
+    val notificationCountEnabled: Boolean = true,
+
+    @ColumnInfo(name = "order_index")
+    val orderIndex: Int = 0
 )

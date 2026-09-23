@@ -20,6 +20,9 @@ interface WorkspaceNotificationStateDao {
     @Query("SELECT * FROM workspace_notification_states")
     fun getAllNotificationStatesFlow(): Flow<List<WorkspaceNotificationStateEntity>>
 
+    @Query("SELECT * FROM workspace_notification_states")
+    suspend fun getAllNotificationStates(): List<WorkspaceNotificationStateEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateState(state: WorkspaceNotificationStateEntity)
 

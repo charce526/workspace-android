@@ -3,10 +3,12 @@ package cn.xzbim.workspace.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import cn.xzbim.workspace.data.local.entity.WorkspaceNotificationStateEntity
 import cn.xzbim.workspace.data.model.Workspace
 import cn.xzbim.workspace.data.preferences.ThemeMode
 import cn.xzbim.workspace.network.result.LoginResult
 import cn.xzbim.workspace.network.result.SessionCheckResult
+import cn.xzbim.workspace.repository.ManualRefreshResult
 import cn.xzbim.workspace.repository.WorkspaceRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -18,7 +20,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * 工作空间 ViewModel（处理 NocoBase 2.0+ 连接、真实登录认证、会话状态及防竞态工作空间打开逻辑）
+ * 工作空间 ViewModel（处理 NocoBase 2.0+ 连接、真实登录认证、会话状态及未读站内消息同步控制）
  */
 class WorkspaceViewModel(
     private val repository: WorkspaceRepository
@@ -35,6 +37,18 @@ class WorkspaceViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
+
+    val notificationStates: StateFlow<Map<String, WorkspaceNotificationStateEntity>> =
+        repository.notificationStatesFlow.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyMap()
+        )
+
+    private val _isRefreshingNotifications = MutableStateFlow(false)
+    val isRefreshingNotifications: StateFlow<Boolean> = _isRefreshingNotifications.asStateFlow()
+
+    private var lastManualRefreshTime = 0L
 
     val floatingBallPosition: StateFlow<Pair<Boolean, Float>> = repository.floatingBallPositionFlow.stateIn(
         scope = viewModelScope,
@@ -97,6 +111,45 @@ class WorkspaceViewModel(
     val openingWorkspaceId: StateFlow<String?> = _openingWorkspaceId.asStateFlow()
 
     private var openWorkspaceJob: Job? = null
+
+    fun refreshNotificationCountsManually(onResult: (ManualRefreshResult) -> Unit = {}) {
+        if (_isRefreshingNotifications.value) return
+
+        val now = System.currentTimeMillis()
+        if (now - lastManualRefreshTime < 15000L) {
+            onResult(ManualRefreshResult.ALL_SUCCESS)
+            return
+        }
+
+        _isRefreshingNotifications.value = true
+        lastManualRefreshTime = now
+
+        viewModelScope.launch {
+            try {
+                val result = repository.syncNotificationCounts(isManualRefresh = true)
+                onResult(result)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onResult(ManualRefreshResult.ALL_FAILED)
+            } finally {
+                _isRefreshingNotifications.value = false
+            }
+        }
+    }
+
+    fun syncNotificationCountsOnStartOrForeground() {
+        viewModelScope.launch {
+            try {
+                repository.syncNotificationCounts(isManualRefresh = false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 
     fun setAutoEnterLastWorkspace(enabled: Boolean) {
         viewModelScope.launch {
@@ -346,6 +399,16 @@ class WorkspaceViewModel(
         viewModelScope.launch {
             try {
                 repository.unsetDefaultWorkspace(id)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun reorderWorkspaces(orderedWorkspaceIds: List<String>) {
+        viewModelScope.launch {
+            try {
+                repository.reorderWorkspaces(orderedWorkspaceIds)
             } catch (e: Exception) {
                 e.printStackTrace()
             }

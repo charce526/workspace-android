@@ -2,6 +2,8 @@ package cn.xzbim.workspace.repository
 
 import android.util.Log
 import cn.xzbim.workspace.data.local.WorkspaceDao
+import cn.xzbim.workspace.data.local.dao.WorkspaceNotificationStateDao
+import cn.xzbim.workspace.data.local.entity.WorkspaceNotificationStateEntity
 import cn.xzbim.workspace.data.local.mapper.toDomainModel
 import cn.xzbim.workspace.data.local.mapper.toEntity
 import cn.xzbim.workspace.data.model.Workspace
@@ -10,25 +12,44 @@ import cn.xzbim.workspace.data.preferences.ThemeMode
 import cn.xzbim.workspace.network.NocoBaseApiClient
 import cn.xzbim.workspace.network.NocoBaseAuthService
 import cn.xzbim.workspace.network.NocoBaseConnectionService
+import cn.xzbim.workspace.network.NocoBaseNotificationService
 import cn.xzbim.workspace.network.result.ConnectionResult
 import cn.xzbim.workspace.network.result.LoginResult
+import cn.xzbim.workspace.network.result.NotificationCountResult
 import cn.xzbim.workspace.network.result.SessionCheckResult
 import cn.xzbim.workspace.security.SecureCredentialStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
+enum class ManualRefreshResult {
+    ALL_SUCCESS,
+    PARTIAL_FAILED,
+    ALL_FAILED,
+    GLOBAL_DISABLED,
+    NO_ELIGIBLE_WORKSPACES
+}
+
 /**
- * 工作空间数据仓库（整合数据库、Keystore 安全凭据、DataStore 及 NocoBase 2.0+ 网络认证）
+ * 工作空间数据仓库（整合数据库、Keystore 安全凭据、DataStore、NocoBase 认证与站内消息同步）
  */
 class WorkspaceRepository(
     private val workspaceDao: WorkspaceDao,
+    private val workspaceNotificationStateDao: WorkspaceNotificationStateDao,
     private val credentialStore: SecureCredentialStore,
     private val settingsDataStore: SettingsDataStore,
     private val connectionService: NocoBaseConnectionService,
-    private val authService: NocoBaseAuthService
+    private val authService: NocoBaseAuthService,
+    private val notificationService: NocoBaseNotificationService = NocoBaseNotificationService()
 ) {
 
     companion object {
@@ -38,6 +59,11 @@ class WorkspaceRepository(
     val workspacesFlow: Flow<List<Workspace>> = workspaceDao.getAllWorkspacesFlow().map { list ->
         list.map { it.toDomainModel() }
     }
+
+    val notificationStatesFlow: Flow<Map<String, WorkspaceNotificationStateEntity>> =
+        workspaceNotificationStateDao.getAllNotificationStatesFlow().map { list ->
+            list.associateBy { it.workspaceId }
+        }
 
     val floatingBallPositionFlow: Flow<Pair<Boolean, Float>> = settingsDataStore.floatingBallPositionFlow
     val floatingBallIdleAlphaFlow: Flow<Float> = settingsDataStore.floatingBallIdleAlphaFlow
@@ -53,6 +79,141 @@ class WorkspaceRepository(
         workspacesFlow,
         autoEnterLastWorkspaceFlow
     ) { _, _ -> true }
+
+    suspend fun syncNotificationCounts(isManualRefresh: Boolean = false): ManualRefreshResult = withContext(Dispatchers.IO) {
+        val globalEnabled = globalNotificationCountEnabledFlow.first()
+        if (!globalEnabled) {
+            return@withContext ManualRefreshResult.GLOBAL_DISABLED
+        }
+
+        val allWorkspaces = workspaceDao.getAllWorkspaces().map { it.toDomainModel() }
+        val eligibleWorkspaces = allWorkspaces.filter { it.notificationCountEnabled }
+
+        if (eligibleWorkspaces.isEmpty()) {
+            return@withContext ManualRefreshResult.NO_ELIGIBLE_WORKSPACES
+        }
+
+        val now = System.currentTimeMillis()
+        var successCount = 0
+        var failureCount = 0
+
+        coroutineScope {
+            val semaphore = Semaphore(3)
+            val jobs = eligibleWorkspaces.map { workspace ->
+                async {
+                    semaphore.withPermit {
+                        val existingState = workspaceNotificationStateDao.getStateByWorkspaceId(workspace.id)
+                            ?: WorkspaceNotificationStateEntity(workspaceId = workspace.id)
+
+                        if (!isManualRefresh) {
+                            if (existingState.status == "UNSUPPORTED" || existingState.status == "AUTH_REQUIRED") {
+                                return@async
+                            }
+                            if (now < existingState.nextRetryAt) {
+                                return@async
+                            }
+                        }
+
+                        val token = getToken(workspace.id) ?: ""
+                        val result = notificationService.fetchUnreadCount(workspace.serverUrl, token)
+
+                        val newState = calculateNextNotificationState(existingState, result, now)
+                        workspaceNotificationStateDao.insertOrUpdateState(newState)
+
+                        if (result is NotificationCountResult.Success) {
+                            successCount++
+                        } else {
+                            failureCount++
+                        }
+                    }
+                }
+            }
+            jobs.awaitAll()
+        }
+
+        when {
+            successCount > 0 && failureCount == 0 -> ManualRefreshResult.ALL_SUCCESS
+            successCount > 0 && failureCount > 0 -> ManualRefreshResult.PARTIAL_FAILED
+            else -> ManualRefreshResult.ALL_FAILED
+        }
+    }
+
+    private fun calculateNextNotificationState(
+        existing: WorkspaceNotificationStateEntity,
+        result: NotificationCountResult,
+        now: Long
+    ): WorkspaceNotificationStateEntity {
+        return when (result) {
+            is NotificationCountResult.Success -> {
+                existing.copy(
+                    unreadCount = result.count,
+                    status = "AVAILABLE",
+                    failureCount = 0,
+                    lastAttemptAt = now,
+                    lastSuccessAt = now,
+                    nextRetryAt = 0L,
+                    lastErrorType = null
+                )
+            }
+            is NotificationCountResult.AuthRequired -> {
+                existing.copy(
+                    status = "AUTH_REQUIRED",
+                    lastAttemptAt = now,
+                    lastErrorType = "AUTH_REQUIRED"
+                )
+            }
+            is NotificationCountResult.Unsupported -> {
+                existing.copy(
+                    status = "UNSUPPORTED",
+                    lastAttemptAt = now,
+                    lastErrorType = "UNSUPPORTED"
+                )
+            }
+            is NotificationCountResult.RateLimited -> {
+                val backoffMs = (result.retryAfterSeconds ?: 600L) * 1000L
+                val nextCount = existing.failureCount + 1
+                existing.copy(
+                    status = if (nextCount >= 5) "SUSPENDED" else "RATE_LIMITED",
+                    failureCount = nextCount,
+                    lastAttemptAt = now,
+                    nextRetryAt = now + backoffMs,
+                    lastErrorType = "RATE_LIMITED"
+                )
+            }
+            is NotificationCountResult.ServerError -> {
+                val nextCount = existing.failureCount + 1
+                val backoffMs = calculateBackoffMs(nextCount)
+                existing.copy(
+                    status = if (nextCount >= 5) "SUSPENDED" else "SERVER_ERROR",
+                    failureCount = nextCount,
+                    lastAttemptAt = now,
+                    nextRetryAt = now + backoffMs,
+                    lastErrorType = "SERVER_ERROR_${result.statusCode}"
+                )
+            }
+            is NotificationCountResult.NetworkError, NotificationCountResult.InvalidResponse -> {
+                val nextCount = existing.failureCount + 1
+                val backoffMs = calculateBackoffMs(nextCount)
+                existing.copy(
+                    status = if (nextCount >= 5) "SUSPENDED" else "NETWORK_ERROR",
+                    failureCount = nextCount,
+                    lastAttemptAt = now,
+                    nextRetryAt = now + backoffMs,
+                    lastErrorType = "NETWORK_ERROR"
+                )
+            }
+        }
+    }
+
+    private fun calculateBackoffMs(failureCount: Int): Long {
+        return when (failureCount) {
+            1 -> 5 * 60 * 1000L
+            2 -> 15 * 60 * 1000L
+            3 -> 60 * 60 * 1000L
+            4 -> 6 * 60 * 60 * 1000L
+            else -> 24 * 60 * 60 * 1000L
+        }
+    }
 
     suspend fun saveFloatingBallPosition(isRightSide: Boolean, verticalRatio: Float) {
         settingsDataStore.saveFloatingBallPosition(isRightSide, verticalRatio)
@@ -106,17 +267,10 @@ class WorkspaceRepository(
         return credentialStore.getToken(workspaceId)
     }
 
-    /**
-     * 测试服务器基础 HTTP/HTTPS 连通性
-     */
     suspend fun testConnection(serverUrl: String): ConnectionResult {
         return connectionService.testConnection(serverUrl)
     }
 
-    /**
-     * 连接服务器、真实登录并保存工作空间与凭据
-     * 直接请求 NocoBase 2.0+ 官方 POST /api/auth:signIn 端点完成判断与登录
-     */
     suspend fun signInAndSaveWorkspace(
         name: String,
         serverUrl: String,
@@ -156,9 +310,6 @@ class WorkspaceRepository(
         return loginResult
     }
 
-    /**
-     * 重新验证/重新登录现有工作空间（原地更新 Token 与凭据，绝不生成重复记录）
-     */
     suspend fun reLoginAndUpdateWorkspace(
         workspaceId: String,
         password: String
@@ -193,9 +344,6 @@ class WorkspaceRepository(
         return loginResult
     }
 
-    /**
-     * 校验会话状态 (校验 Token 有效性，必要时自动尝试刷新/重新登录)
-     */
     suspend fun checkSession(workspaceId: String): SessionCheckResult {
         val workspace = getWorkspace(workspaceId) ?: return SessionCheckResult.ExpiredOrUnauthorized
         val token = getToken(workspaceId)
@@ -237,7 +385,6 @@ class WorkspaceRepository(
         val existing = workspaceDao.getWorkspaceById(id) ?: return LoginResult.NetworkError("工作空间不存在")
         val formattedUrl = NocoBaseApiClient.normalizeServerUrl(serverUrl)
 
-        // A saved password must never be sent to a newly edited server/account.
         val identityChanged = formattedUrl != existing.serverUrl || username != existing.username
         val verifyPassword = if (!password.isNullOrBlank()) password else if (!identityChanged) getPassword(id) ?: "" else ""
 
@@ -273,8 +420,18 @@ class WorkspaceRepository(
         return loginResult
     }
 
+    suspend fun updateWorkspaceNotificationCountEnabled(id: String, enabled: Boolean) {
+        val existing = workspaceDao.getWorkspaceById(id) ?: return
+        workspaceDao.updateWorkspace(existing.copy(notificationCountEnabled = enabled, updatedAt = System.currentTimeMillis()))
+    }
+
+    suspend fun reorderWorkspaces(orderedWorkspaceIds: List<String>) {
+        workspaceDao.updateWorkspacesOrder(orderedWorkspaceIds)
+    }
+
     suspend fun deleteWorkspace(id: String) {
         workspaceDao.deleteWorkspaceById(id)
+        workspaceNotificationStateDao.deleteStateByWorkspaceId(id)
         credentialStore.clearCredential(id)
     }
 
@@ -296,10 +453,5 @@ class WorkspaceRepository(
 
     suspend fun getDefaultWorkspace(): Workspace? {
         return workspaceDao.getDefaultWorkspace()?.toDomainModel()
-    }
-
-    suspend fun updateWorkspaceNotificationCountEnabled(id: String, enabled: Boolean) {
-        val existing = workspaceDao.getWorkspaceById(id) ?: return
-        workspaceDao.updateWorkspace(existing.copy(notificationCountEnabled = enabled, updatedAt = System.currentTimeMillis()))
     }
 }
