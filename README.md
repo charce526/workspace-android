@@ -8,11 +8,9 @@
 
 ## 项目介绍
 
-Workspace（工作空间）是一套面向 NocoBase 的独立第三方 Android 客户端，与 NocoBase 官方没有隶属关系。
+Workspace（工作空间）是一套面向 NocoBase 的第三方 Android 客户端，应用支持连接和管理多个 NocoBase 实例。它使用原生 Android 组件提供实例管理、登录认证、凭据存储、文件处理、下载和悬浮球等能力，同时使用 Android WebView 加载用户配置的 NocoBase 实例页面，尽量复用 NocoBase 原有的页面和业务能力，不重复实现 NocoBase 的业务界面。
 
-应用支持连接和管理多个 NocoBase 实例。它使用原生 Android 组件提供实例管理、登录认证、凭据存储、文件处理、下载和悬浮球等能力，同时使用 Android WebView 加载用户配置的 NocoBase 实例页面，尽量复用 NocoBase 原有的页面和业务能力，不重复实现 NocoBase 的业务界面。
-
-项目当前优先支持 Android，目标是提供一个轻量、通用、无需在 NocoBase 服务端额外安装专用插件的移动端客户端。
+项目目标是提供一个轻量、通用的 NocoBase 移动端客户端。
 
 ## 主要功能
 
@@ -144,10 +142,9 @@ Release 编译前，需要将 `keystore.properties.example` 复制为项目根�
 
 ## 项目开发者
 
-- 开发者：协作BIM
+- 开发者：偕作BIM
 - 组织：厦门偕作建筑咨询有限公司
 - 官网：https://www.xzbim.cn
-- GitHub：https://github.com/charce526
 - 项目仓库：https://github.com/charce526/workspace-android
 
 ## 致谢与相关项目
@@ -161,17 +158,6 @@ Release 编译前，需要将 `keystore.properties.example` 复制为项目根�
 
 Workspace 是独立第三方客户端，不代表 NocoBase 官方立场。NocoBase 名称及相关商标归其各自权利人所有。
 
-## 当前范围与限制
-
-- 当前项目优先支持 Android，不包含 iOS 客户端。
-- 页面能力取决于 NocoBase 实例版本、已安装插件、用户权限和移动端适配情况。
-- Blob 下载、仅依赖 Token 的特殊下载场景尚未作为通用能力处理。
-- 进程被系统强制终止后的上传续传尚未实现。
-- 多账号 WebView Cookie 和 LocalStorage 的完全隔离仍需要更多设备验证。
-- 通知、推送和后台消息同步暂不属于当前版本范围。
-
 ## 开源许可
 
 本项目采用 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) 开源。
-
-Apache License 2.0 相比 MIT License 增加了专利授权、版权声明保留、修改文件标注和许可证随附等要求。使用、修改或分发本项目时，请遵守 Apache License 2.0 的完整条款。
