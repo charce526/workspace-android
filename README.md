@@ -8,9 +8,7 @@
 
 ## 项目介绍
 
-Workspace（工作空间）是一套面向 NocoBase 的第三方 Android 客户端，应用支持连接和管理多个 NocoBase 实例。它使用原生 Android 组件提供实例管理、登录认证、凭据存储、文件处理、下载和悬浮球等能力，同时使用 Android WebView 加载用户配置的 NocoBase 实例页面，尽量复用 NocoBase 原有的页面和业务能力，不重复实现 NocoBase 的业务界面。
-
-项目目标是提供一个轻量、通用的 NocoBase 移动端客户端。
+Workspace（工作空间）是一个面向 NocoBase 的第三方 Android 客户端，应用支持连接和管理多个 NocoBase 实例。它使用原生 Android 组件提供实例管理、登录认证、凭据存储、文件处理、下载和悬浮球等能力，同时使用 Android WebView 加载用户配置的 NocoBase 实例页面，应用直接使用 NocoBase 原有的页面和业务能力。项目目标是提供一个轻量、通用的 NocoBase 移动端客户端。
 
 ## 主要功能
 
