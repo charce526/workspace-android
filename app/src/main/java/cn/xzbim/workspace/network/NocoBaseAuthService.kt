@@ -3,6 +3,7 @@ package cn.xzbim.workspace.network
 import android.util.Log
 import cn.xzbim.workspace.network.result.LoginResult
 import cn.xzbim.workspace.network.result.SessionCheckResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -28,7 +29,7 @@ class NocoBaseAuthService {
     ): LoginResult = withContext(Dispatchers.IO) {
         val formattedUrl = NocoBaseApiClient.normalizeServerUrl(serverUrl)
         val endpoint = "$formattedUrl/api/auth:signIn"
-        Log.d(TAG, "signIn -> Endpoint: $endpoint | Account: $account")
+        Log.d(TAG, "signIn -> Requesting authentication")
 
         val jsonBody = JSONObject().apply {
             put("account", account)
@@ -68,11 +69,13 @@ class NocoBaseAuthService {
                     LoginResult.ServerError(code, "服务器错误 (HTTP $code)")
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: IOException) {
-            Log.d(TAG, "signIn -> NetworkError: ${e.message}")
+            Log.d(TAG, "signIn -> NetworkError")
             LoginResult.NetworkError("无法连接到服务器，请检查地址或网络环境")
         } catch (e: Exception) {
-            Log.d(TAG, "signIn -> Exception: ${e.message}")
+            Log.d(TAG, "signIn -> Exception")
             LoginResult.NetworkError("登录验证时发生未知错误")
         }
     }
@@ -85,7 +88,7 @@ class NocoBaseAuthService {
 
         val formattedUrl = NocoBaseApiClient.normalizeServerUrl(serverUrl)
         val endpoint = "$formattedUrl/api/auth:check"
-        Log.d(TAG, "checkSession -> Endpoint: $endpoint")
+        Log.d(TAG, "checkSession -> Requesting session check")
 
         try {
             val request = Request.Builder()
@@ -104,12 +107,14 @@ class NocoBaseAuthService {
                 } else if (code == 401 || code == 403) {
                     SessionCheckResult.ExpiredOrUnauthorized
                 } else {
-                    SessionCheckResult.Unavailable("服务器暂时无法验证会话 (HTTP $code)")
+                    SessionCheckResult.Unavailable()
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.d(TAG, "checkSession -> Exception: ${e.message}")
-            SessionCheckResult.Unavailable("会话验证失败，原因：${e.message}")
+            Log.d(TAG, "checkSession -> Exception")
+            SessionCheckResult.Unavailable()
         }
     }
 }

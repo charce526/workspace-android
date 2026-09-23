@@ -68,7 +68,6 @@ fun SettingsContent(
     val rememberLoginState by viewModel.rememberLoginState.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
     val idleAlpha by viewModel.floatingBallIdleAlpha.collectAsState()
-    val webViewZoomEnabled by viewModel.webViewZoomEnabled.collectAsState()
     val keepScreenOn by viewModel.keepScreenOn.collectAsState()
     val openLinksInExternalBrowser by viewModel.openLinksInExternalBrowser.collectAsState()
 
@@ -209,17 +208,6 @@ fun SettingsContent(
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 ListItem(
-                    headlineContent = { Text("网页手势缩放") },
-                    supportingContent = { Text("允许在 NocoBase 页面中使用双指手势缩放") },
-                    trailingContent = {
-                        Switch(
-                            checked = webViewZoomEnabled,
-                            onCheckedChange = { viewModel.setWebViewZoomEnabled(it) }
-                        )
-                    }
-                )
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                ListItem(
                     headlineContent = { Text("保持屏幕常亮") },
                     supportingContent = { Text("仅在查看 NocoBase 页面期间防止屏幕休眠") },
                     trailingContent = {
@@ -234,8 +222,8 @@ fun SettingsContent(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // 【分组 4：浏览器与存储】
-        SectionHeader(title = stringResource(id = R.string.browser_and_storage), icon = Icons.Default.Tune)
+        // 【分组 4：存储管理】
+        SectionHeader(title = "存储管理", icon = Icons.Default.Tune)
 
         Surface(
             shape = RoundedCornerShape(16.dp),
@@ -342,9 +330,7 @@ fun SettingsContent(
                 TextButton(onClick = {
                     showClearCacheDialog = false
                     try {
-                        WebView(context).let { temporary ->
-                            try { temporary.clearCache(true) } finally { temporary.destroy() }
-                        }
+                        WebView(context).clearCache(true)
                         Toast.makeText(context, "缓存已清除", Toast.LENGTH_SHORT).show()
                     } catch (_: Exception) {
                         Toast.makeText(context, "清理缓存失败", Toast.LENGTH_SHORT).show()

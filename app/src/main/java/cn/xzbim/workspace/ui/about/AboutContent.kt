@@ -42,7 +42,7 @@ import cn.xzbim.workspace.ui.theme.AppShapes
 import cn.xzbim.workspace.ui.theme.AppSpacing
 
 /**
- * 关于界面核心可复用组件（纯文本说明与带圆角的官方链接卡片）
+ * 关于界面核心可复用组件（纯文本说明、开发者开源地址与带圆角官方链接卡片）
  */
 @Composable
 fun AboutContent(
@@ -124,21 +124,36 @@ fun AboutContent(
 
         Spacer(modifier = Modifier.height(AppSpacing.xxl))
 
-        // 2. 应用介绍模块（无框无图标纯文本）
+        // 2. 应用介绍模块（无框纯文本）
         SectionTitle(title = "应用介绍")
         Spacer(modifier = Modifier.height(AppSpacing.xs))
-        Text(
-            text = "工作空间是一套专为 NocoBase 打造的通用 Android 移动客户端，支持连接和管理多个NocoBase服务器。本应用是独立第三方客户端，与 NocoBase 官方无直接隶属关系。",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 4.dp)
-        )
+        ) {
+            Text(
+                text = "工作空间是一套专为 NocoBase 打造的通用 Android 移动客户端，支持连接和使用多个 NocoBase 实例。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "本应用是独立第三方客户端，与 NocoBase 官方无直接隶属关系。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "用户名、密码及登录凭据仅保存在本地设备中，本应用不会上传至开发者或其他第三方服务器。登录时，必要的认证信息仅会发送至用户主动配置的 NocoBase 实例。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
 
         Spacer(modifier = Modifier.height(AppSpacing.lg))
 
-        // 3. 开发者模块
+        // 3. 开发者模块（包含官网与本项目 GitHub 开源地址）
         SectionTitle(title = "开发者")
         Spacer(modifier = Modifier.height(AppSpacing.xs))
         Surface(
@@ -146,31 +161,56 @@ fun AboutContent(
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.fillMaxWidth()
         ) {
-            ListItem(
-                headlineContent = { Text("偕作BIM") },
-                supportingContent = { Text("https://www.xzbim.cn") },
-                leadingContent = {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(AppDimensions.iconMd)
-                    )
-                },
-                trailingContent = {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                        contentDescription = null,
-                        modifier = Modifier.size(AppDimensions.iconSm)
-                    )
-                },
-                modifier = Modifier.clickable { openBrowser("https://www.xzbim.cn") }
-            )
+            Column {
+                ListItem(
+                    headlineContent = { Text("偕作BIM") },
+                    supportingContent = { Text("https://www.xzbim.cn") },
+                    leadingContent = {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(AppDimensions.iconMd)
+                        )
+                    },
+                    trailingContent = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = null,
+                            modifier = Modifier.size(AppDimensions.iconSm)
+                        )
+                    },
+                    modifier = Modifier.clickable { openBrowser("https://www.xzbim.cn") }
+                )
+
+                HorizontalDivider(modifier = Modifier.padding(horizontal = AppSpacing.lg))
+
+                ListItem(
+                    headlineContent = { Text("开源地址") },
+                    supportingContent = { Text("https://github.com/charce526/workspace-android") },
+                    leadingContent = {
+                        Icon(
+                            imageVector = Icons.Default.Code,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(AppDimensions.iconMd)
+                        )
+                    },
+                    trailingContent = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = null,
+                            modifier = Modifier.size(AppDimensions.iconSm)
+                        )
+                    },
+                    modifier = Modifier.clickable { openBrowser("https://github.com/charce526/workspace-android") }
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(AppSpacing.lg))
 
-        // 4. NocoBase 项目介绍模块（纯文本说明 + 带圆角卡片的官方与 GitHub 链接）
+        // 4. NocoBase 项目介绍模块
         SectionTitle(title = "NocoBase项目介绍")
         Spacer(modifier = Modifier.height(AppSpacing.xs))
         Text(
@@ -191,7 +231,7 @@ fun AboutContent(
         ) {
             Column {
                 ListItem(
-                    headlineContent = { Text("NocoBase 的官方网站") },
+                    headlineContent = { Text("NocoBase官方网站") },
                     supportingContent = { Text("https://www.nocobase.com") },
                     leadingContent = {
                         Icon(

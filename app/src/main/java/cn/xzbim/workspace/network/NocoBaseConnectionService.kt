@@ -2,6 +2,7 @@ package cn.xzbim.workspace.network
 
 import android.util.Log
 import cn.xzbim.workspace.network.result.ConnectionResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -18,7 +19,7 @@ class NocoBaseConnectionService {
 
     suspend fun testConnection(serverUrl: String): ConnectionResult = withContext(Dispatchers.IO) {
         val formattedUrl = NocoBaseApiClient.normalizeServerUrl(serverUrl)
-        Log.d(TAG, "Testing connection to: $formattedUrl")
+        Log.d(TAG, "Testing connection")
 
         try {
             val request = Request.Builder()
@@ -42,11 +43,13 @@ class NocoBaseConnectionService {
                     )
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: IOException) {
-            Log.d(TAG, "Connection failed: ${e.message}")
+            Log.d(TAG, "Connection failed")
             ConnectionResult.NetworkError("无法连接到服务器，请检查地址或网络环境")
         } catch (e: Exception) {
-            Log.d(TAG, "Connection unexpected error: ${e.message}")
+            Log.d(TAG, "Connection unexpected error")
             ConnectionResult.NetworkError("建立连接时发生未知错误")
         }
     }

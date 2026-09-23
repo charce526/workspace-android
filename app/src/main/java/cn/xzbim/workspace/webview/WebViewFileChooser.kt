@@ -40,13 +40,31 @@ class WebViewFileChooser {
     fun takePhoto(context: Context, cameraLauncher: ActivityResultLauncher<Uri>) {
         try {
             val dir = File(context.cacheDir, "camera_photos").apply { mkdirs() }
-            cameraFile = File.createTempFile("photo_", ".jpg", dir)
-            cameraUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cameraFile!!)
-            cameraLauncher.launch(cameraUri!!)
+            cleanOldCameraPhotos(dir)
+
+            val newFile = File.createTempFile("photo_", ".jpg", dir)
+            val newUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", newFile)
+
+            cameraFile = newFile
+            cameraUri = newUri
+
+            cameraLauncher.launch(newUri)
         } catch (_: Exception) {
             Toast.makeText(context, "无法启动相机，请尝试从相册选择", Toast.LENGTH_LONG).show()
             cancelPendingCallback()
         }
+    }
+
+    private fun cleanOldCameraPhotos(dir: File) {
+        try {
+            val now = System.currentTimeMillis()
+            val threshold = 24 * 60 * 60 * 1000L
+            dir.listFiles()?.forEach { file ->
+                if (now - file.lastModified() > threshold) {
+                    file.delete()
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     fun openGallery(context: Context, launcher: ActivityResultLauncher<Intent>, isMultiple: Boolean = false) {
@@ -62,13 +80,14 @@ class WebViewFileChooser {
 
     fun openFilePicker(
         launcher: ActivityResultLauncher<Intent>,
-        fileChooserParams: WebChromeClient.FileChooserParams?,
+        fileChooserParams: WebChromeClient.FileChooserParams? = null,
         acceptTypes: Array<String> = emptyArray(),
         isMultiple: Boolean = false
     ) {
         try {
-            val array = acceptTypes.map { it as String? }.toTypedArray()
-            launcher.launch(pickerIntent(mimeTypes(array), isMultiple))
+            val typesToUse = if (acceptTypes.isNotEmpty()) acceptTypes else accepted.filterNotNull().toTypedArray()
+            val types = mimeTypes(typesToUse)
+            launcher.launch(pickerIntent(types, isMultiple))
         } catch (_: Exception) {
             cancelPendingCallback()
         }
@@ -83,7 +102,7 @@ class WebViewFileChooser {
             putExtra(Intent.EXTRA_ALLOW_MULTIPLE, allowMultiple)
         }
 
-    private fun mimeTypes(types: Array<String?>): List<String> =
+    private fun mimeTypes(types: Array<out String?>): List<String> =
         types.filterNotNull().flatMap { it.split(',') }.map { it.trim().lowercase() }.filter { it.isNotEmpty() }
             .map { value ->
                 if (value.startsWith(".")) MimeTypeMap.getSingleton()

@@ -3,12 +3,16 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+
 const root = new URL('../', import.meta.url);
 const read = path => fs.readFileSync(new URL(path, root), 'utf8');
+const exists = path => fs.existsSync(new URL(path, root));
+
 const base = 'app/src/main/java/cn/xzbim/workspace/';
 const bridge = read(base + 'webview/NocoBaseSessionBridge.kt');
 const js = bridge.match(/val jsCode = """([\s\S]*?)"""/)?.[1];
 assert.ok(js);
+
 let tests = 0;
 for (const url of ['https://example.com/a', 'https://example.com:443/a', 'http://example.com', 'https://evil.test', 'https://example.com:8443']) {
     const location = new URL(url);
@@ -21,10 +25,13 @@ for (const url of ['https://example.com/a', 'https://example.com:443/a', 'http:/
     assert.equal(values.has('NOCOBASE_TOKEN'), trusted, url);
     tests++;
 }
+
 const screen = read(base + 'ui/webview/NocoBaseWebViewScreen.kt');
 const chooser = read(base + 'webview/WebViewFileChooser.kt');
 const manager = read(base + 'webview/NocoBaseWebViewManager.kt');
 const repository = read(base + 'repository/WorkspaceRepository.kt');
+const authService = read(base + 'network/NocoBaseAuthService.kt');
+
 const guards = [
     ['live URL handler', screen.includes('currentUrlHandler.value.handleUrlLoading')],
     ['destroy on disposal', screen.includes('webView.destroy()')],
@@ -38,6 +45,16 @@ const guards = [
     ['no destructive database fallback', !read(base + 'data/local/AppDatabase.kt').includes('fallbackToDestructiveMigration')],
     ['no embedded signing password', !/storePassword\s*=\s*"/.test(read('app/build.gradle.kts'))],
     ['file option does not cancel first', !/onDismiss\(\)\s+on(?:TakePhoto|SelectGallery|SelectFile)\(\)/.test(read(base + 'ui/webview/components/FileUploadOptionsSheet.kt'))],
+    ['auth service rethrows CancellationException', authService.includes('catch (e: CancellationException)') && authService.includes('throw e')],
+    ['no account in auth logs', !authService.includes('Account:')],
+    ['camera cache cleanup exists', chooser.includes('cleanOldCameraPhotos') && chooser.includes('24 * 60 * 60 * 1000L')],
+    ['no non-null assertions on camera fields', !chooser.includes('cameraUri!!') && !chooser.includes('cameraFile!!')],
+    ['gradle-wrapper.jar exists', exists('gradle/wrapper/gradle-wrapper.jar')],
 ];
-for (const [name, passed] of guards) { assert.ok(passed, name); tests++; }
+
+for (const [name, passed] of guards) {
+    assert.ok(passed, name);
+    tests++;
+}
+
 console.log(`PASS: ${tests} JavaScript/source regression checks (not an Android build)`);

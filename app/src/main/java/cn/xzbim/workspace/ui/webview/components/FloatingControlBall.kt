@@ -64,7 +64,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * 客户端 52dp 悬浮控制球组件（支持自由拖拽吸附、自动透明度与快捷菜单导航）
+ * 客户端 52dp 悬浮控制球组件（支持自由拖拽吸附、零晃动与快捷菜单导航）
  */
 @Composable
 fun FloatingControlBall(
@@ -106,33 +106,30 @@ fun FloatingControlBall(
     val rightSnapPx = (screenWidthPx - ballSizePx - marginPx).coerceAtLeast(leftSnapPx)
     val touchSlopPx = viewConfig.touchSlop
 
-    var isRightSide by remember(savedIsRightSide) { mutableStateOf(savedIsRightSide) }
-    val initialXPx = if (isRightSide) rightSnapPx else leftSnapPx
+    var isRightSide by remember { mutableStateOf(savedIsRightSide) }
+    var lastSavedIsRightSide by remember { mutableStateOf(savedIsRightSide) }
+    var lastSavedVerticalRatio by remember { mutableFloatStateOf(savedVerticalRatio) }
 
     // 悬浮球默认位置控制
     val initialRatio = if (savedVerticalRatio <= 0f || savedVerticalRatio == 0.68f || savedVerticalRatio == 0.85f) 0.96f else savedVerticalRatio
     val initialYPx = (safeTopPx + initialRatio * availableSafeHeight).coerceIn(safeTopPx, safeBottomLimitPx)
 
     var isDragging by remember { mutableStateOf(false) }
-    var currentXPx by remember { mutableFloatStateOf(initialXPx) }
+    var currentXPx by remember { mutableFloatStateOf(if (isRightSide) rightSnapPx else leftSnapPx) }
     var currentYPx by remember { mutableFloatStateOf(initialYPx) }
 
-    var targetXPx by remember { mutableFloatStateOf(initialXPx) }
+    // 外部主动重置位置（例如设置页点击重置或屏幕尺寸变化）时同步位置
     LaunchedEffect(savedIsRightSide, savedVerticalRatio, screenWidthPx, screenHeightPx) {
-        if (!isDragging) {
+        if (!isDragging && (savedIsRightSide != lastSavedIsRightSide || savedVerticalRatio != lastSavedVerticalRatio)) {
+            lastSavedIsRightSide = savedIsRightSide
+            lastSavedVerticalRatio = savedVerticalRatio
             isRightSide = savedIsRightSide
             currentXPx = if (isRightSide) rightSnapPx else leftSnapPx
-            targetXPx = currentXPx
-            currentYPx = initialYPx
+            currentYPx = (safeTopPx + initialRatio * availableSafeHeight).coerceIn(safeTopPx, safeBottomLimitPx)
         }
     }
-    val animatedXPx by animateFloatAsState(
-        targetValue = targetXPx,
-        animationSpec = tween(300),
-        label = "ballSnapX"
-    )
 
-    val renderXPx = if (isDragging) currentXPx else animatedXPx
+    val renderXPx = currentXPx
     val renderYPx = currentYPx
 
     var isInteracting by remember { mutableStateOf(false) }
@@ -163,7 +160,7 @@ fun FloatingControlBall(
                 .size(52.dp)
                 .alpha(animatedAlpha)
                 .clip(CircleShape)
-                .pointerInput(screenWidthPx, screenHeightPx, savedIsRightSide, savedVerticalRatio) {
+                .pointerInput(screenWidthPx, screenHeightPx) {
                     detectDragGestures(
                         onDragStart = {
                             isDragging = true
@@ -176,18 +173,28 @@ fun FloatingControlBall(
                             currentXPx = (currentXPx + dragAmount.x).coerceIn(leftSnapPx, rightSnapPx)
                             currentYPx = (currentYPx + dragAmount.y).coerceIn(safeTopPx, safeBottomLimitPx)
                         },
-                        onDragEnd = {
+                        onDragCancel = {
                             isDragging = false
+                            currentXPx = if (isRightSide) rightSnapPx else leftSnapPx
+                        },
+                        onDragEnd = {
                             isInteracting = true
                             if (totalDragDistance < touchSlopPx) {
+                                isDragging = false
                                 menuExpanded = !menuExpanded
                             } else {
-                                isRightSide = (currentXPx + ballSizePx / 2) > (screenWidthPx / 2)
-                                targetXPx = if (isRightSide) rightSnapPx else leftSnapPx
-                                currentXPx = targetXPx
+                                val newIsRightSide = (currentXPx + ballSizePx / 2) > (screenWidthPx / 2)
+                                val newRatio = ((currentYPx - safeTopPx) / availableSafeHeight).coerceIn(0.0f, 1.0f)
+                                val snapX = if (newIsRightSide) rightSnapPx else leftSnapPx
 
-                                val newVerticalRatio = ((currentYPx - safeTopPx) / availableSafeHeight).coerceIn(0.0f, 1.0f)
-                                onPositionSaved(isRightSide, newVerticalRatio)
+                                // 先将本地坐标与方向锁定更新至最终吸附位置，再关闭拖拽状态，确保无闪烁无晃动
+                                currentXPx = snapX
+                                isRightSide = newIsRightSide
+                                lastSavedIsRightSide = newIsRightSide
+                                lastSavedVerticalRatio = newRatio
+                                isDragging = false
+
+                                onPositionSaved(newIsRightSide, newRatio)
                             }
                         }
                     )
