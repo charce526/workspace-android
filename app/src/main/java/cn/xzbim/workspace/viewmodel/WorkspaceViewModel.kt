@@ -117,7 +117,7 @@ class WorkspaceViewModel(
 
         val now = System.currentTimeMillis()
         if (now - lastManualRefreshTime < 15000L) {
-            onResult(ManualRefreshResult.ALL_SUCCESS)
+            onResult(ManualRefreshResult.COOLDOWN_ACTIVE)
             return
         }
 
@@ -339,7 +339,6 @@ class WorkspaceViewModel(
         serverUrl: String,
         username: String,
         password: String? = null,
-        notificationCountEnabled: Boolean = true,
         onResult: (LoginResult) -> Unit
     ) {
         viewModelScope.launch {
@@ -348,8 +347,7 @@ class WorkspaceViewModel(
                 name = name,
                 serverUrl = serverUrl,
                 username = username,
-                password = password,
-                notificationCountEnabled = notificationCountEnabled
+                password = password
             )
             onResult(result)
         }
@@ -405,12 +403,14 @@ class WorkspaceViewModel(
         }
     }
 
-    fun reorderWorkspaces(orderedWorkspaceIds: List<String>) {
+    fun reorderWorkspaces(orderedWorkspaceIds: List<String>, onResult: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
             try {
                 repository.reorderWorkspaces(orderedWorkspaceIds)
+                onResult(true)
             } catch (e: Exception) {
                 e.printStackTrace()
+                onResult(false)
             }
         }
     }

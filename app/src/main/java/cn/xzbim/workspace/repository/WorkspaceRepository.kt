@@ -36,7 +36,8 @@ enum class ManualRefreshResult {
     PARTIAL_FAILED,
     ALL_FAILED,
     GLOBAL_DISABLED,
-    NO_ELIGIBLE_WORKSPACES
+    NO_ELIGIBLE_WORKSPACES,
+    COOLDOWN_ACTIVE
 }
 
 /**
@@ -337,6 +338,13 @@ class WorkspaceRepository(
                 credentialStore.savePassword(workspaceId, "")
             }
 
+            // 登录成功后复位通知状态为 AVAILABLE 并清空失败计数
+            val existingState = workspaceNotificationStateDao.getStateByWorkspaceId(workspaceId)
+                ?: WorkspaceNotificationStateEntity(workspaceId = workspaceId)
+            workspaceNotificationStateDao.insertOrUpdateState(
+                existingState.copy(status = "AVAILABLE", failureCount = 0, nextRetryAt = 0L)
+            )
+
             Log.d(TAG, "reLoginAndUpdateWorkspace -> Successfully updated credentials in-place for $workspaceId")
             return loginResult.copy(workspaceId = workspaceId)
         }
@@ -379,8 +387,7 @@ class WorkspaceRepository(
         name: String,
         serverUrl: String,
         username: String,
-        password: String? = null,
-        notificationCountEnabled: Boolean = true
+        password: String? = null
     ): LoginResult {
         val existing = workspaceDao.getWorkspaceById(id) ?: return LoginResult.NetworkError("工作空间不存在")
         val formattedUrl = NocoBaseApiClient.normalizeServerUrl(serverUrl)
@@ -399,7 +406,7 @@ class WorkspaceRepository(
                 name = name.ifBlank { existing.name },
                 serverUrl = formattedUrl,
                 username = username,
-                notificationCountEnabled = notificationCountEnabled,
+                notificationCountEnabled = existing.notificationCountEnabled, // 保持已有的 notificationCountEnabled 原值！
                 updatedAt = System.currentTimeMillis()
             )
 
@@ -413,6 +420,13 @@ class WorkspaceRepository(
                 credentialStore.savePassword(id, "")
             }
 
+            // 修改服务器/账号成功后重置退避状态
+            val existingState = workspaceNotificationStateDao.getStateByWorkspaceId(id)
+                ?: WorkspaceNotificationStateEntity(workspaceId = id)
+            workspaceNotificationStateDao.insertOrUpdateState(
+                existingState.copy(status = "AVAILABLE", failureCount = 0, nextRetryAt = 0L)
+            )
+
             Log.d(TAG, "updateWorkspaceWithAuth -> Verification success, saved updated credentials for $id")
             return loginResult
         }
@@ -423,10 +437,14 @@ class WorkspaceRepository(
     suspend fun updateWorkspaceNotificationCountEnabled(id: String, enabled: Boolean) {
         val existing = workspaceDao.getWorkspaceById(id) ?: return
         workspaceDao.updateWorkspace(existing.copy(notificationCountEnabled = enabled, updatedAt = System.currentTimeMillis()))
-    }
-
-    suspend fun reorderWorkspaces(orderedWorkspaceIds: List<String>) {
-        workspaceDao.updateWorkspacesOrder(orderedWorkspaceIds)
+        if (enabled) {
+            // 重新开启开关后复位失败重试，允许立即获取
+            val existingState = workspaceNotificationStateDao.getStateByWorkspaceId(id)
+                ?: WorkspaceNotificationStateEntity(workspaceId = id)
+            workspaceNotificationStateDao.insertOrUpdateState(
+                existingState.copy(status = "AVAILABLE", failureCount = 0, nextRetryAt = 0L)
+            )
+        }
     }
 
     suspend fun deleteWorkspace(id: String) {
@@ -453,5 +471,9 @@ class WorkspaceRepository(
 
     suspend fun getDefaultWorkspace(): Workspace? {
         return workspaceDao.getDefaultWorkspace()?.toDomainModel()
+    }
+
+    suspend fun reorderWorkspaces(orderedWorkspaceIds: List<String>) {
+        workspaceDao.updateWorkspacesOrder(orderedWorkspaceIds)
     }
 }

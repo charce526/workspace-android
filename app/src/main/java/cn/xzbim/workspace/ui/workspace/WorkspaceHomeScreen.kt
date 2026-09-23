@@ -1,6 +1,7 @@
 package cn.xzbim.workspace.ui.workspace
 
 import android.app.Activity
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -70,7 +71,7 @@ import cn.xzbim.workspace.viewmodel.WorkspaceViewModel
 import kotlin.math.roundToInt
 
 /**
- * 工作空间首页（固定占位 + 独立拖动浮层架构：零漂移、零抖动、跟随手指拖拽排序与未读数量 Badge 标签）
+ * 工作空间首页（固定占位 + 独立拖动浮层架构：支持多次连续拖拽动画、防竞态异步锁与未读数量 Badge 标签）
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -107,7 +108,11 @@ fun WorkspaceHomeScreen(
 
     val lazyListState = rememberLazyListState()
 
-    var localWorkspaces by remember(workspaces) { mutableStateOf(workspaces) }
+    // 保持持久化的 localWorkspaces 引用，避免每次 Room 发流覆盖 State 导致 animateItem 重置
+    var localWorkspaces by remember { mutableStateOf(workspaces) }
+    var dragStartSnapshot by remember { mutableStateOf<List<Workspace>?>(null) }
+    var lastCommittedOrder by remember { mutableStateOf<List<String>?>(null) }
+    var isSubmittingReorder by remember { mutableStateOf(false) }
 
     // 独立拖动浮层架构的核心状态
     var draggedWorkspaceId by remember { mutableStateOf<String?>(null) }
@@ -116,8 +121,13 @@ fun WorkspaceHomeScreen(
     var draggedCardHeightPx by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(workspaces) {
-        if (draggedWorkspaceId == null) {
-            localWorkspaces = workspaces
+        Log.d("DragSort", "Room Flow emitted workspaces: ${workspaces.map { it.id }}, draggedId=$draggedWorkspaceId, isSubmitting=$isSubmittingReorder")
+        if (draggedWorkspaceId == null && !isSubmittingReorder) {
+            val currentIds = workspaces.map { it.id }
+            if (lastCommittedOrder == null || currentIds == lastCommittedOrder) {
+                localWorkspaces = workspaces
+                lastCommittedOrder = null
+            }
         }
     }
 
@@ -138,8 +148,11 @@ fun WorkspaceHomeScreen(
                 ManualRefreshResult.ALL_FAILED -> "未能获取未读消息数量，请稍后重试"
                 ManualRefreshResult.GLOBAL_DISABLED -> "请先在设置中开启“获取未读站内消息数量”"
                 ManualRefreshResult.NO_ELIGIBLE_WORKSPACES -> "没有已开启未读消息获取的工作空间"
+                ManualRefreshResult.COOLDOWN_ACTIVE -> null
             }
-            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            if (msg != null) {
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -285,23 +298,191 @@ fun WorkspaceHomeScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        LazyColumn(
-                            state = lazyListState,
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            contentPadding = PaddingValues(bottom = 24.dp)
-                        ) {
-                            items(
-                                items = localWorkspaces,
-                                key = { workspace -> workspace.id }
-                            ) { workspace ->
-                                val isCardLoading = (openingWorkspaceId == workspace.id)
-                                val hasLocalToken = !app.credentialStore.getToken(workspace.id).isNullOrBlank()
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            LazyColumn(
+                                state = lazyListState,
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                contentPadding = PaddingValues(bottom = 24.dp)
+                            ) {
+                                items(
+                                    items = localWorkspaces,
+                                    key = { workspace -> workspace.id }
+                                ) { workspace ->
+                                    val isCardLoading = (openingWorkspaceId == workspace.id)
+                                    val hasLocalToken = !app.credentialStore.getToken(workspace.id).isNullOrBlank()
 
-                                val notifState = notificationStates[workspace.id]
+                                    val notifState = notificationStates[workspace.id]
+                                    val count = notifState?.unreadCount ?: 0
+                                    val shouldShowBadge = globalNotificationEnabled &&
+                                            workspace.notificationCountEnabled &&
+                                            (notifState != null && notifState.lastSuccessAt > 0L) &&
+                                            count > 0
+
+                                    val badgeText = if (shouldShowBadge) {
+                                        if (count > 99) "99+" else count.toString()
+                                    } else null
+
+                                    val isBeingDragged = (workspace.id == draggedWorkspaceId)
+
+                                    WorkspaceCard(
+                                        workspace = workspace,
+                                        isLoading = isCardLoading,
+                                        enabled = !isOpeningWorkspace && draggedWorkspaceId == null,
+                                        badgeText = badgeText,
+                                        isDragging = false,
+                                        modifier = Modifier
+                                            .animateItem()
+                                            .then(
+                                                if (isBeingDragged) Modifier.alpha(0.15f) else Modifier
+                                            )
+                                            .pointerInput(workspace.id) {
+                                                detectDragGesturesAfterLongPress(
+                                                    onDragStart = {
+                                                        val visibleItems = lazyListState.layoutInfo.visibleItemsInfo
+                                                        val itemInfo = visibleItems.firstOrNull { it.key == workspace.id }
+                                                        if (itemInfo != null) {
+                                                            draggedWorkspaceId = workspace.id
+                                                            dragStartSnapshot = localWorkspaces.toList()
+                                                            draggedCardInitialTopY = itemInfo.offset.toFloat()
+                                                            draggedCardTotalY = 0f
+                                                            draggedCardHeightPx = itemInfo.size.toFloat()
+                                                            Log.d("DragSort", "onDragStart: workspaceId=${workspace.id}, snapshot=${dragStartSnapshot?.map { it.id }}")
+                                                        }
+                                                    },
+                                                    onDrag = { change, dragAmount ->
+                                                        change.consume()
+                                                        val currentId = draggedWorkspaceId ?: return@detectDragGesturesAfterLongPress
+                                                        draggedCardTotalY += dragAmount.y
+
+                                                        val visibleItems = lazyListState.layoutInfo.visibleItemsInfo
+                                                        val currentIndex = localWorkspaces.indexOfFirst { it.id == currentId }
+                                                        if (currentIndex == -1) return@detectDragGesturesAfterLongPress
+
+                                                        val floatingCenterY = draggedCardInitialTopY + draggedCardTotalY + draggedCardHeightPx / 2f
+                                                        val hysteresisPx = with(density) { 8.dp.toPx() }
+
+                                                        if (dragAmount.y > 0 && currentIndex < localWorkspaces.size - 1) {
+                                                            val nextWorkspace = localWorkspaces[currentIndex + 1]
+                                                            val nextInfo = visibleItems.firstOrNull { it.key == nextWorkspace.id }
+                                                            if (nextInfo != null) {
+                                                                val nextCenterY = nextInfo.offset + nextInfo.size / 2f
+                                                                if (floatingCenterY > nextCenterY + hysteresisPx) {
+                                                                    val mutable = localWorkspaces.toMutableList()
+                                                                    val item = mutable.removeAt(currentIndex)
+                                                                    mutable.add(currentIndex + 1, item)
+                                                                    localWorkspaces = mutable.toList()
+                                                                    Log.d("DragSort", "Swapped down: newOrder=${localWorkspaces.map { it.id }}")
+                                                                }
+                                                            }
+                                                        } else if (dragAmount.y < 0 && currentIndex > 0) {
+                                                            val prevWorkspace = localWorkspaces[currentIndex - 1]
+                                                            val prevInfo = visibleItems.firstOrNull { it.key == prevWorkspace.id }
+                                                            if (prevInfo != null) {
+                                                                val prevCenterY = prevInfo.offset + prevInfo.size / 2f
+                                                                if (floatingCenterY < prevCenterY - hysteresisPx) {
+                                                                    val mutable = localWorkspaces.toMutableList()
+                                                                    val item = mutable.removeAt(currentIndex)
+                                                                    mutable.add(currentIndex - 1, item)
+                                                                    localWorkspaces = mutable.toList()
+                                                                    Log.d("DragSort", "Swapped up: newOrder=${localWorkspaces.map { it.id }}")
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    onDragEnd = {
+                                                        val currentDraggedId = draggedWorkspaceId
+                                                        val snapshot = dragStartSnapshot
+                                                        if (currentDraggedId != null) {
+                                                            val finalIds = localWorkspaces.map { it.id }
+                                                            Log.d("DragSort", "onDragEnd: workspaceId=$currentDraggedId, submitting finalOrder=$finalIds")
+
+                                                            isSubmittingReorder = true
+                                                            lastCommittedOrder = finalIds
+                                                            draggedWorkspaceId = null
+                                                            draggedCardInitialTopY = 0f
+                                                            draggedCardTotalY = 0f
+                                                            draggedCardHeightPx = 0f
+
+                                                            viewModel.reorderWorkspaces(finalIds) { success ->
+                                                                isSubmittingReorder = false
+                                                                if (success) {
+                                                                    dragStartSnapshot = null
+                                                                    Log.d("DragSort", "Reorder DB transaction SUCCESS for finalIds=$finalIds")
+                                                                    Toast.makeText(context, "工作空间排序已更新", Toast.LENGTH_SHORT).show()
+                                                                } else {
+                                                                    if (snapshot != null) {
+                                                                        localWorkspaces = snapshot
+                                                                    }
+                                                                    dragStartSnapshot = null
+                                                                    Log.d("DragSort", "Reorder DB transaction FAILED, reverted to snapshot")
+                                                                    Toast.makeText(context, "保存排序失败，已恢复原顺序", Toast.LENGTH_SHORT).show()
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    onDragCancel = {
+                                                        Log.d("DragSort", "onDragCancel: reverting to dragStartSnapshot")
+                                                        val snapshot = dragStartSnapshot
+                                                        if (snapshot != null) {
+                                                            localWorkspaces = snapshot
+                                                        }
+                                                        draggedWorkspaceId = null
+                                                        draggedCardInitialTopY = 0f
+                                                        draggedCardTotalY = 0f
+                                                        draggedCardHeightPx = 0f
+                                                        dragStartSnapshot = null
+                                                        isSubmittingReorder = false
+                                                    }
+                                                )
+                                            },
+                                        onClick = {
+                                            viewModel.setLastUsedWorkspace(workspace.id)
+
+                                            if (hasLocalToken) {
+                                                onNavigateToWebView(workspace.id)
+                                            } else {
+                                                viewModel.checkSessionAndOpen(
+                                                    workspaceId = workspace.id,
+                                                    onValid = {
+                                                        onNavigateToWebView(workspace.id)
+                                                    },
+                                                    onExpired = {
+                                                        Toast.makeText(context, "请先登录工作空间", Toast.LENGTH_SHORT).show()
+                                                        onNavigateToReLogin(workspace.id)
+                                                    },
+                                                    onUnavailable = {
+                                                        Toast.makeText(context, "暂时无法连接服务器，请稍后重试", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                )
+                                            }
+                                        },
+                                        onEditClick = { onNavigateToEditWorkspace(workspace.id) },
+                                        onDeleteClick = { deletingWorkspace = workspace },
+                                        onSetDefaultClick = {
+                                            viewModel.setDefaultWorkspace(workspace.id)
+                                            Toast.makeText(context, "已设为默认工作空间", Toast.LENGTH_SHORT).show()
+                                        },
+                                        onUnsetDefaultClick = {
+                                            viewModel.unsetDefaultWorkspace(workspace.id)
+                                            Toast.makeText(context, "已取消默认工作空间", Toast.LENGTH_SHORT).show()
+                                        },
+                                        onToggleNotificationCountClick = { enabled ->
+                                            viewModel.updateWorkspaceNotificationCountEnabled(workspace.id, enabled)
+                                            val msg = if (enabled) "已开启该工作空间的未读消息获取" else "已关闭该工作空间的未读消息获取"
+                                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+                            }
+
+                            // 独立拖动浮层，位于与 LazyColumn 相同的 100% 同一顶端对齐 Box 中
+                            val draggedWorkspace = localWorkspaces.firstOrNull { it.id == draggedWorkspaceId }
+                            if (draggedWorkspace != null) {
+                                val notifState = notificationStates[draggedWorkspace.id]
                                 val count = notifState?.unreadCount ?: 0
                                 val shouldShowBadge = globalNotificationEnabled &&
-                                        workspace.notificationCountEnabled &&
+                                        draggedWorkspace.notificationCountEnabled &&
                                         (notifState != null && notifState.lastSuccessAt > 0L) &&
                                         count > 0
 
@@ -309,168 +490,36 @@ fun WorkspaceHomeScreen(
                                     if (count > 99) "99+" else count.toString()
                                 } else null
 
-                                val isBeingDragged = (workspace.id == draggedWorkspaceId)
-
-                                WorkspaceCard(
-                                    workspace = workspace,
-                                    isLoading = isCardLoading,
-                                    enabled = !isOpeningWorkspace && draggedWorkspaceId == null,
-                                    badgeText = badgeText,
-                                    isDragging = false,
+                                Box(
                                     modifier = Modifier
-                                        .animateItem()
-                                        .then(
-                                            if (isBeingDragged) Modifier.alpha(0.15f) else Modifier
-                                        )
-                                        .pointerInput(workspace.id) {
-                                            detectDragGesturesAfterLongPress(
-                                                onDragStart = {
-                                                    val visibleItems = lazyListState.layoutInfo.visibleItemsInfo
-                                                    val itemInfo = visibleItems.firstOrNull { it.key == workspace.id }
-                                                    if (itemInfo != null) {
-                                                        draggedWorkspaceId = workspace.id
-                                                        draggedCardInitialTopY = itemInfo.offset.toFloat()
-                                                        draggedCardTotalY = 0f
-                                                        draggedCardHeightPx = itemInfo.size.toFloat()
-                                                    }
-                                                },
-                                                onDrag = { change, dragAmount ->
-                                                    change.consume()
-                                                    val currentId = draggedWorkspaceId ?: return@detectDragGesturesAfterLongPress
-                                                    draggedCardTotalY += dragAmount.y
-
-                                                    val visibleItems = lazyListState.layoutInfo.visibleItemsInfo
-                                                    val currentIndex = localWorkspaces.indexOfFirst { it.id == currentId }
-                                                    if (currentIndex == -1) return@detectDragGesturesAfterLongPress
-
-                                                    // 使用固定浮层的真实几何中心点与列表中相邻项的物理中心点做交叉比较
-                                                    val floatingCenterY = draggedCardInitialTopY + draggedCardTotalY + draggedCardHeightPx / 2f
-                                                    val hysteresisPx = with(density) { 8.dp.toPx() }
-
-                                                    if (dragAmount.y > 0 && currentIndex < localWorkspaces.size - 1) {
-                                                        val nextWorkspace = localWorkspaces[currentIndex + 1]
-                                                        val nextInfo = visibleItems.firstOrNull { it.key == nextWorkspace.id }
-                                                        if (nextInfo != null) {
-                                                            val nextCenterY = nextInfo.offset + nextInfo.size / 2f
-                                                            if (floatingCenterY > nextCenterY + hysteresisPx) {
-                                                                val mutable = localWorkspaces.toMutableList()
-                                                                val item = mutable.removeAt(currentIndex)
-                                                                mutable.add(currentIndex + 1, item)
-                                                                localWorkspaces = mutable
-                                                            }
-                                                        }
-                                                    } else if (dragAmount.y < 0 && currentIndex > 0) {
-                                                        val prevWorkspace = localWorkspaces[currentIndex - 1]
-                                                        val prevInfo = visibleItems.firstOrNull { it.key == prevWorkspace.id }
-                                                        if (prevInfo != null) {
-                                                            val prevCenterY = prevInfo.offset + prevInfo.size / 2f
-                                                            if (floatingCenterY < prevCenterY - hysteresisPx) {
-                                                                val mutable = localWorkspaces.toMutableList()
-                                                                val item = mutable.removeAt(currentIndex)
-                                                                mutable.add(currentIndex - 1, item)
-                                                                localWorkspaces = mutable
-                                                            }
-                                                        }
-                                                    }
-                                                },
-                                                onDragEnd = {
-                                                    if (draggedWorkspaceId != null) {
-                                                        draggedWorkspaceId = null
-                                                        draggedCardTotalY = 0f
-                                                        viewModel.reorderWorkspaces(localWorkspaces.map { it.id })
-                                                        Toast.makeText(context, "工作空间排序已更新", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                },
-                                                onDragCancel = {
-                                                    draggedWorkspaceId = null
-                                                    draggedCardTotalY = 0f
-                                                    localWorkspaces = workspaces
-                                                }
-                                            )
-                                        },
-                                    onClick = {
-                                        viewModel.setLastUsedWorkspace(workspace.id)
-
-                                        if (hasLocalToken) {
-                                            onNavigateToWebView(workspace.id)
-                                        } else {
-                                            viewModel.checkSessionAndOpen(
-                                                workspaceId = workspace.id,
-                                                onValid = {
-                                                    onNavigateToWebView(workspace.id)
-                                                },
-                                                onExpired = {
-                                                    Toast.makeText(context, "请先登录工作空间", Toast.LENGTH_SHORT).show()
-                                                    onNavigateToReLogin(workspace.id)
-                                                },
-                                                onUnavailable = {
-                                                    Toast.makeText(context, "暂时无法连接服务器，请稍后重试", Toast.LENGTH_SHORT).show()
-                                                }
+                                        .fillMaxWidth()
+                                        .offset {
+                                            IntOffset(
+                                                x = 0,
+                                                y = (draggedCardInitialTopY + draggedCardTotalY).roundToInt()
                                             )
                                         }
-                                    },
-                                    onEditClick = { onNavigateToEditWorkspace(workspace.id) },
-                                    onDeleteClick = { deletingWorkspace = workspace },
-                                    onSetDefaultClick = {
-                                        viewModel.setDefaultWorkspace(workspace.id)
-                                        Toast.makeText(context, "已设为默认工作空间", Toast.LENGTH_SHORT).show()
-                                    },
-                                    onUnsetDefaultClick = {
-                                        viewModel.unsetDefaultWorkspace(workspace.id)
-                                        Toast.makeText(context, "已取消默认工作空间", Toast.LENGTH_SHORT).show()
-                                    },
-                                    onToggleNotificationCountClick = { enabled ->
-                                        viewModel.updateWorkspaceNotificationCountEnabled(workspace.id, enabled)
-                                        val msg = if (enabled) "已开启该工作空间的未读消息获取" else "已关闭该工作空间的未读消息获取"
-                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    // 独立拖动浮层：完全由 (draggedCardInitialTopY + draggedCardTotalY) 绝对控制，零偏移漂移，绝对跟手
-                    val draggedWorkspace = localWorkspaces.firstOrNull { it.id == draggedWorkspaceId }
-                    if (draggedWorkspace != null) {
-                        val notifState = notificationStates[draggedWorkspace.id]
-                        val count = notifState?.unreadCount ?: 0
-                        val shouldShowBadge = globalNotificationEnabled &&
-                                draggedWorkspace.notificationCountEnabled &&
-                                (notifState != null && notifState.lastSuccessAt > 0L) &&
-                                count > 0
-
-                        val badgeText = if (shouldShowBadge) {
-                            if (count > 99) "99+" else count.toString()
-                        } else null
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .offset {
-                                    IntOffset(
-                                        x = 0,
-                                        y = (draggedCardInitialTopY + draggedCardTotalY).roundToInt()
+                                        .zIndex(100f)
+                                        .graphicsLayer {
+                                            scaleX = 1.03f
+                                            scaleY = 1.03f
+                                            shadowElevation = 8.dp.toPx()
+                                        }
+                                ) {
+                                    WorkspaceCard(
+                                        workspace = draggedWorkspace,
+                                        isLoading = false,
+                                        enabled = false,
+                                        badgeText = badgeText,
+                                        isDragging = true,
+                                        onClick = {},
+                                        onEditClick = {},
+                                        onDeleteClick = {},
+                                        onSetDefaultClick = {},
+                                        onUnsetDefaultClick = {}
                                     )
                                 }
-                                .zIndex(100f)
-                                .graphicsLayer {
-                                    scaleX = 1.03f
-                                    scaleY = 1.03f
-                                    shadowElevation = 8.dp.toPx()
-                                }
-                        ) {
-                            WorkspaceCard(
-                                workspace = draggedWorkspace,
-                                isLoading = false,
-                                enabled = false,
-                                badgeText = badgeText,
-                                isDragging = true,
-                                onClick = {},
-                                onEditClick = {},
-                                onDeleteClick = {},
-                                onSetDefaultClick = {},
-                                onUnsetDefaultClick = {}
-                            )
+                            }
                         }
                     }
                 }

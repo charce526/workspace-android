@@ -5,6 +5,7 @@ import android.webkit.WebStorage
 import android.webkit.WebView
 import android.widget.Toast
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,6 +36,8 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchColors
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -54,7 +58,7 @@ import cn.xzbim.workspace.data.preferences.ThemeMode
 import cn.xzbim.workspace.viewmodel.WorkspaceViewModel
 
 /**
- * 设置页面可复用核心 List/Group 组件（统一单一真实配置数据源，被 SettingsScreen 和 WorkspaceSettingsSheet 共享）
+ * 设置页面可复用核心 List/Group 组件（统一单一真实配置数据源，为深色/浅色模式提供高对比度 Switch 视觉效果）
  */
 @Composable
 fun SettingsContent(
@@ -77,6 +81,8 @@ fun SettingsContent(
     var showClearCacheDialog by remember { mutableStateOf(false) }
     var showClearSiteDataDialog by remember { mutableStateOf(false) }
 
+    val switchColors = appSwitchColors()
+
     Column(
         modifier = modifier
             .verticalScroll(rememberScrollState())
@@ -97,7 +103,8 @@ fun SettingsContent(
                     trailingContent = {
                         Switch(
                             checked = autoEnterLastWorkspace,
-                            onCheckedChange = { viewModel.setAutoEnterLastWorkspace(it) }
+                            onCheckedChange = { viewModel.setAutoEnterLastWorkspace(it) },
+                            colors = switchColors
                         )
                     }
                 )
@@ -108,7 +115,8 @@ fun SettingsContent(
                     trailingContent = {
                         Switch(
                             checked = rememberLoginState,
-                            onCheckedChange = { viewModel.setRememberLoginState(it) }
+                            onCheckedChange = { viewModel.setRememberLoginState(it) },
+                            colors = switchColors
                         )
                     }
                 )
@@ -132,7 +140,8 @@ fun SettingsContent(
                     trailingContent = {
                         Switch(
                             checked = globalNotificationCountEnabled,
-                            onCheckedChange = { viewModel.setGlobalNotificationCountEnabled(it) }
+                            onCheckedChange = { viewModel.setGlobalNotificationCountEnabled(it) },
+                            colors = switchColors
                         )
                     }
                 )
@@ -228,7 +237,8 @@ fun SettingsContent(
                             onCheckedChange = {
                                 viewModel.setOpenLinksInExternalBrowser(it)
                                 onExternalBrowserSettingChanged?.invoke()
-                            }
+                            },
+                            colors = switchColors
                         )
                     }
                 )
@@ -239,7 +249,8 @@ fun SettingsContent(
                     trailingContent = {
                         Switch(
                             checked = keepScreenOn,
-                            onCheckedChange = { viewModel.setKeepScreenOn(it) }
+                            onCheckedChange = { viewModel.setKeepScreenOn(it) },
+                            colors = switchColors
                         )
                     }
                 )
@@ -401,6 +412,36 @@ fun SettingsContent(
                     Text(stringResource(id = R.string.cancel))
                 }
             }
+        )
+    }
+}
+
+@Composable
+private fun appSwitchColors(): SwitchColors {
+    val isDark = isSystemInDarkTheme()
+    return if (isDark) {
+        SwitchDefaults.colors(
+            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+            checkedTrackColor = MaterialTheme.colorScheme.primary,
+            checkedBorderColor = Color.Transparent,
+            checkedIconColor = MaterialTheme.colorScheme.primary,
+
+            uncheckedThumbColor = Color(0xFFCBD5E1), // #CBD5E1 Slate-300: 深色模式下极具高对比度的明亮灰色圆形滑块
+            uncheckedTrackColor = Color(0xFF334155), // #334155 Slate-700: 深灰色轨道，对比卡片背景 #1E293B
+            uncheckedBorderColor = Color(0xFF64748B), // #64748B Slate-500: 清晰勾勒轨道的边框线
+            uncheckedIconColor = Color(0xFF334155)
+        )
+    } else {
+        SwitchDefaults.colors(
+            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+            checkedTrackColor = MaterialTheme.colorScheme.primary,
+            checkedBorderColor = Color.Transparent,
+            checkedIconColor = MaterialTheme.colorScheme.primary,
+
+            uncheckedThumbColor = Color(0xFF64748B), // #64748B Slate-500 浅色模式滑块
+            uncheckedTrackColor = Color(0xFFE2E8F0), // #E2E8F0 Slate-200 浅色模式轨道
+            uncheckedBorderColor = Color(0xFFCBD5E1), // #CBD5E1 Slate-300 浅色模式边框
+            uncheckedIconColor = Color(0xFFE2E8F0)
         )
     }
 }
