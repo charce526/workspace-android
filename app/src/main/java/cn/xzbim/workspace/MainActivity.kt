@@ -15,14 +15,22 @@ import cn.xzbim.workspace.viewmodel.WorkspaceViewModelFactory
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+
+        val app = applicationContext as WorkspaceApplication
+
         enableEdgeToEdge()
         setContent {
-            val app = applicationContext as WorkspaceApplication
             val viewModel: WorkspaceViewModel = viewModel(
                 factory = WorkspaceViewModelFactory(app.workspaceRepository)
             )
+
+            // 维持系统 SplashScreen 直到本地 Room 数据库和 DataStore 完成初始化读取
+            splashScreen.setKeepOnScreenCondition {
+                !viewModel.isInitialized.value
+            }
+
             val themeMode by viewModel.themeMode.collectAsState()
 
             WorkspaceTheme(themeMode = themeMode) {

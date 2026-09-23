@@ -24,6 +24,12 @@ class WorkspaceViewModel(
     private val repository: WorkspaceRepository
 ) : ViewModel() {
 
+    val isInitialized: StateFlow<Boolean> = repository.isInitializedFlow.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = false
+    )
+
     val workspaces: StateFlow<List<Workspace>> = repository.workspacesFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),

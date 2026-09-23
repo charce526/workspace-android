@@ -15,6 +15,7 @@ import cn.xzbim.workspace.network.result.LoginResult
 import cn.xzbim.workspace.network.result.SessionCheckResult
 import cn.xzbim.workspace.security.SecureCredentialStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.util.UUID
@@ -46,6 +47,11 @@ class WorkspaceRepository(
     val webViewZoomEnabledFlow: Flow<Boolean> = settingsDataStore.webViewZoomEnabledFlow
     val keepScreenOnFlow: Flow<Boolean> = settingsDataStore.keepScreenOnFlow
     val openLinksInExternalBrowserFlow: Flow<Boolean> = settingsDataStore.openLinksInExternalBrowserFlow
+
+    val isInitializedFlow: Flow<Boolean> = combine(
+        workspacesFlow,
+        autoEnterLastWorkspaceFlow
+    ) { _, _ -> true }
 
     suspend fun saveFloatingBallPosition(isRightSide: Boolean, verticalRatio: Float) {
         settingsDataStore.saveFloatingBallPosition(isRightSide, verticalRatio)

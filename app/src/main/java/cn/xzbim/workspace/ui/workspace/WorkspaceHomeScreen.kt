@@ -79,6 +79,7 @@ fun WorkspaceHomeScreen(
         }
     }
 
+    val isInitialized by viewModel.isInitialized.collectAsState()
     val workspaces by viewModel.workspaces.collectAsState()
     val isOpeningWorkspace by viewModel.isOpeningWorkspace.collectAsState()
     val openingWorkspaceId by viewModel.openingWorkspaceId.collectAsState()
@@ -170,7 +171,13 @@ fun WorkspaceHomeScreen(
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
-        if (workspaces.isEmpty()) {
+        if (!isInitialized) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            )
+        } else if (workspaces.isEmpty()) {
             WorkspaceEmptyContent(
                 onAddWorkspaceClick = onNavigateToAddWorkspace,
                 modifier = Modifier.padding(innerPadding)
