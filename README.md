@@ -33,7 +33,7 @@
 ## 📱 Android 最低版本 (Minimum Android Version)
 
 * **Minimum SDK: 26** (Android 8.0 Oreo 及以上)
-* **Target SDK: 37** (Android 15+)
+* **Target SDK: 37**
 
 ---
 
@@ -47,9 +47,9 @@
 ## 🛠️ 编译方法 (Build Instructions)
 
 ### 环境要求
-* **Android Studio**: Jellyfish | 2023.3.1 或更新版本
-* **JDK**: JDK 17
-* **Gradle**: 8.x+
+* 可支持 Android API 37 与 AGP 9.4.1 的 Android Studio
+* **Gradle JVM**: Java 25（以 `gradle/gradle-daemon-jvm.properties` 为准）
+* **Gradle Wrapper**: 9.6.0（以 `gradle-wrapper.properties` 为准）
 
 ### 编译步骤
 1. 克隆仓库到本地：
@@ -57,16 +57,18 @@
    git clone https://github.com/charce526/workspace-android.git
    ```
 2. 使用 Android Studio 打开项目文件夹。
-3. 等待 Gradle 同步完成后，通过终端或 Android Studio 执行编译：
+3. 确认仓库包含 `gradle/wrapper/gradle-wrapper.jar`。如果缺失，请使用可信的本地 Gradle 9.6.0 执行 `gradle wrapper --gradle-version 9.6.0` 生成并提交该文件。
+4. 等待 Gradle 同步完成后，通过终端或 Android Studio 执行编译与检查：
    * 编译 Debug 测试包：
      ```bash
-     ./gradlew assembleDebug
+     ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
      ```
    * 编译正式 Release 签名包：
      ```bash
-     ./gradlew assembleRelease
+     ./gradlew :app:assembleRelease
      ```
-4. 编译产物输出路径：
+5. Release 编译前，将 `keystore.properties.example` 复制为仓库根目录下的 `keystore.properties`，填入现有签名文件的信息。真实配置和 `.jks` 均不得提交到 Git，也不要重新生成签名身份。
+6. 编译产物输出路径：
    * Debug APK: `app/build/outputs/apk/debug/app-debug.apk`
    * Release APK: `app/build/outputs/apk/release/app-release.apk`
 

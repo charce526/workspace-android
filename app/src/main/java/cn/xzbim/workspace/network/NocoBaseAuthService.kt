@@ -4,7 +4,6 @@ import android.util.Log
 import cn.xzbim.workspace.network.result.LoginResult
 import cn.xzbim.workspace.network.result.SessionCheckResult
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
@@ -29,6 +28,7 @@ class NocoBaseAuthService {
     ): LoginResult = withContext(Dispatchers.IO) {
         val formattedUrl = NocoBaseApiClient.normalizeServerUrl(serverUrl)
         val endpoint = "$formattedUrl/api/auth:signIn"
+        Log.d(TAG, "signIn -> Endpoint: $endpoint | Account: $account")
 
         val jsonBody = JSONObject().apply {
             put("account", account)
@@ -36,12 +36,12 @@ class NocoBaseAuthService {
         }.toString()
 
         try {
-        val request = Request.Builder()
-            .url(endpoint)
-            .header("X-Authenticator", "basic")
-            .header("Content-Type", "application/json")
-            .post(jsonBody.toRequestBody(JSON_MEDIA_TYPE))
-            .build()
+            val request = Request.Builder()
+                .url(endpoint)
+                .header("X-Authenticator", "basic")
+                .header("Content-Type", "application/json")
+                .post(jsonBody.toRequestBody(JSON_MEDIA_TYPE))
+                .build()
 
             NocoBaseApiClient.client.newCall(request).execute().use { response ->
                 val code = response.code
@@ -68,8 +68,6 @@ class NocoBaseAuthService {
                     LoginResult.ServerError(code, "服务器错误 (HTTP $code)")
                 }
             }
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: IOException) {
             Log.d(TAG, "signIn -> NetworkError: ${e.message}")
             LoginResult.NetworkError("无法连接到服务器，请检查地址或网络环境")
@@ -90,12 +88,12 @@ class NocoBaseAuthService {
         Log.d(TAG, "checkSession -> Endpoint: $endpoint")
 
         try {
-        val request = Request.Builder()
-            .url(endpoint)
-            .header("Authorization", "Bearer $token")
-            .header("X-Authenticator", "basic")
-            .get()
-            .build()
+            val request = Request.Builder()
+                .url(endpoint)
+                .header("Authorization", "Bearer $token")
+                .header("X-Authenticator", "basic")
+                .get()
+                .build()
 
             NocoBaseApiClient.client.newCall(request).execute().use { response ->
                 val code = response.code
@@ -109,11 +107,9 @@ class NocoBaseAuthService {
                     SessionCheckResult.Unavailable("服务器暂时无法验证会话 (HTTP $code)")
                 }
             }
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: Exception) {
             Log.d(TAG, "checkSession -> Exception: ${e.message}")
-            SessionCheckResult.Unavailable()
+            SessionCheckResult.Unavailable("会话验证失败，原因：${e.message}")
         }
     }
 }
