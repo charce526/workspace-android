@@ -24,6 +24,16 @@ Workspace（工作空间）是一套面向 NocoBase 的第三方 Android 客户�
 - 悬浮控制球：支持拖拽、左右吸附、位置记忆、透明度调节和快捷操作。
 - Material 3 界面：支持浅色模式、深色模式和中英文界面。
 
+## 应用截图
+
+| 01-无空间界面 | 02-工作空间列表 | 03-添加工作空间 | 04-编辑工作空间 |
+| :---: | :---: | :---: | :---: |
+| <img src="docs/screenshots/01-无空间界面.jpg" width="200" alt="01-无空间界面" /> | <img src="docs/screenshots/02-工作空间列表.jpg" width="200" alt="02-工作空间列表" /> | <img src="docs/screenshots/03-添加工作空间.jpg" width="200" alt="03-添加工作空间" /> | <img src="docs/screenshots/04-编辑工作空间.jpg" width="200" alt="04-编辑工作空间" /> |
+
+| 05-重新登录界面 | 06-设置界面 | 07-进入工作空间 | 08-悬浮按钮和菜单 |
+| :---: | :---: | :---: | :---: |
+| <img src="docs/screenshots/05-重新登录界面.jpg" width="200" alt="05-重新登录界面" /> | <img src="docs/screenshots/06-设置界面.jpg" width="200" alt="06-设置界面" /> | <img src="docs/screenshots/07-进入工作空间.jpg" width="200" alt="07-进入工作空间" /> | <img src="docs/screenshots/08-悬浮按钮和菜单.jpg" width="200" alt="08-悬浮按钮和菜单" /> |
+
 ## 技术架构
 
 | 模块 | 实现方式 |
@@ -135,7 +145,7 @@ Windows PowerShell 或命令提示符：
 Release APK 输出位置：
 
 ```
-app/build/outputs/apk/release/app-release.apk
+app/build/outputs/apk/release/Workspace_v1.0.0_release.apk
 ```
 
 Release 编译前，需要将 `keystore.properties.example` 复制为项目根目录下的 `keystore.properties`，并填入现有签名配置。真实签名配置和 `.jks` 文件不得提交到 Git，也不要重新生成签名身份。
