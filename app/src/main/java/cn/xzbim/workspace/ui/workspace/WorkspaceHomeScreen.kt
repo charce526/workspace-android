@@ -72,7 +72,7 @@ fun WorkspaceHomeScreen(
     val isDark = isSystemInDarkTheme()
     val app = context.applicationContext as WorkspaceApplication
 
-    // 状态栏图标对比度重置（解决从 WebView 深色网页退回首页时的状态栏反色残留问题）
+    // 恢复状态栏深浅模式图标对比度
     SideEffect {
         window?.let { w ->
             WindowInsetsControllerCompat(w, localView).isAppearanceLightStatusBars = !isDark
@@ -212,10 +212,10 @@ fun WorkspaceHomeScreen(
                                 viewModel.setLastUsedWorkspace(workspace.id)
 
                                 if (hasLocalToken) {
-                                    // 1. 本地优先策略：若已保存安全 Token，立即秒开进入 WebView（后台异步校验 Session）
+                                    // 已存在本地 Token 时直接打开网页
                                     onNavigateToWebView(workspace.id)
                                 } else {
-                                    // 2. 本地无 Token：带加载动画执行网络 Session 校验与自动登录
+                                    // 未保存 Token 时发起网络校验
                                     viewModel.checkSessionAndOpen(
                                         workspaceId = workspace.id,
                                         onValid = {

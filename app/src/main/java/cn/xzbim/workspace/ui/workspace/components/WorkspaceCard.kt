@@ -79,7 +79,7 @@ fun WorkspaceCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // 左侧 M3 图标块（稍微放大图标至 22dp）
+            // 工作空间图标
             Surface(
                 shape = AppShapes.small,
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -95,10 +95,9 @@ fun WorkspaceCard(
                 }
             }
 
-            // 缩紧图标与文字之间的间距（由 12dp 缩紧至 8dp）
             Spacer(modifier = Modifier.width(8.dp))
 
-            // 中间工作空间信息
+            // 工作空间信息
             Column(modifier = Modifier.weight(1f)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

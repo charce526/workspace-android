@@ -118,7 +118,7 @@ fun FloatingControlBall(
     var currentXPx by remember { mutableFloatStateOf(if (isRightSide) rightSnapPx else leftSnapPx) }
     var currentYPx by remember { mutableFloatStateOf(initialYPx) }
 
-    // 外部主动重置位置（例如设置页点击重置或屏幕尺寸变化）时同步位置
+    // 外部修改位置或屏幕尺寸变化时同步位置
     LaunchedEffect(savedIsRightSide, savedVerticalRatio, screenWidthPx, screenHeightPx) {
         if (!isDragging && (savedIsRightSide != lastSavedIsRightSide || savedVerticalRatio != lastSavedVerticalRatio)) {
             lastSavedIsRightSide = savedIsRightSide
@@ -187,7 +187,7 @@ fun FloatingControlBall(
                                 val newRatio = ((currentYPx - safeTopPx) / availableSafeHeight).coerceIn(0.0f, 1.0f)
                                 val snapX = if (newIsRightSide) rightSnapPx else leftSnapPx
 
-                                // 先将本地坐标与方向锁定更新至最终吸附位置，再关闭拖拽状态，确保无闪烁无晃动
+                                // 更新本地坐标与方向锁定，并结束拖拽状态
                                 currentXPx = snapX
                                 isRightSide = newIsRightSide
                                 lastSavedIsRightSide = newIsRightSide

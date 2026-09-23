@@ -16,8 +16,8 @@ android {
         applicationId = "cn.xzbim.workspace"
         minSdk = 26
         targetSdk = 37
-        versionCode = 7
-        versionName = "0.2.5"
+        versionCode = 10
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -47,12 +47,21 @@ android {
             }
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
     buildFeatures {
         compose = true
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.outputs.forEach { output ->
+            output.outputFileName.set("Workspace_v${android.defaultConfig.versionName}_release.apk")
+        }
     }
 }
 

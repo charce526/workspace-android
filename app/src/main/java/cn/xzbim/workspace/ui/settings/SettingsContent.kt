@@ -275,7 +275,7 @@ fun SettingsContent(
         ) {
             ListItem(
                 headlineContent = { Text("关于工作空间") },
-                supportingContent = { Text("版本 0.2.5") },
+                supportingContent = { Text("版本 1.0.0") },
                 trailingContent = {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,

@@ -115,7 +115,7 @@ fun AboutContent(
             color = MaterialTheme.colorScheme.surfaceContainerHigh
         ) {
             Text(
-                text = "版本 0.2.5 (Build 7)",
+                text = "版本 1.0.0 (Build 10)",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)

@@ -43,7 +43,7 @@ fun NavGraph(
     val context = LocalContext.current
     val app = context.applicationContext as WorkspaceApplication
 
-    // 仅在 App 冷启动初始化时执行一次“自动直达默认工作空间”，防止在设置页切换开关时误触发登录
+    // App 冷启动时自动直达默认或上次使用的工作空间
     LaunchedEffect(Unit) {
         val isAutoEnterEnabled = app.workspaceRepository.autoEnterLastWorkspaceFlow.first()
         if (isAutoEnterEnabled) {
