@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -312,7 +313,7 @@ fun SettingsContent(
         ) {
             ListItem(
                 headlineContent = { Text("关于工作空间") },
-                supportingContent = { Text("版本 1.0.0") },
+                supportingContent = { Text("版本 1.1.0") },
                 trailingContent = {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
@@ -332,6 +333,8 @@ fun SettingsContent(
     if (showThemeDialog) {
         AlertDialog(
             onDismissRequest = { showThemeDialog = false },
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.widthIn(max = 320.dp),
             title = { Text("选择外观模式") },
             text = {
                 Column {
@@ -361,6 +364,8 @@ fun SettingsContent(
     if (showClearCacheDialog) {
         AlertDialog(
             onDismissRequest = { showClearCacheDialog = false },
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.widthIn(max = 320.dp),
             title = { Text("清除浏览器缓存") },
             text = { Text("确定要清除浏览器缓存吗？（不会删除工作空间和登录账号数据）") },
             confirmButton = {
@@ -388,6 +393,8 @@ fun SettingsContent(
     if (showClearSiteDataDialog) {
         AlertDialog(
             onDismissRequest = { showClearSiteDataDialog = false },
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.widthIn(max = 320.dp),
             title = { Text("清除网站数据", color = MaterialTheme.colorScheme.error) },
             text = { Text("此操作将清除网站缓存、Cookie 和 LocalStorage 本地数据，可能导致当前工作空间需要重新登录。确定继续吗？") },
             confirmButton = {

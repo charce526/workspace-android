@@ -393,31 +393,43 @@ fun WorkspaceHomeScreen(
                                                     onDragEnd = {
                                                         val currentDraggedId = draggedWorkspaceId
                                                         val snapshot = dragStartSnapshot
+                                                        val startIds = snapshot?.map { it.id }
+                                                        val finalIds = localWorkspaces.map { it.id }
+
+                                                        Log.d("DragSort", "onDragEnd: workspaceId=$currentDraggedId, startIds=$startIds, finalIds=$finalIds")
+
                                                         if (currentDraggedId != null) {
-                                                            val finalIds = localWorkspaces.map { it.id }
-                                                            Log.d("DragSort", "onDragEnd: workspaceId=$currentDraggedId, submitting finalOrder=$finalIds")
+                                                            if (startIds != null && finalIds != startIds) {
+                                                                // 顺位确实发生改变，提交数据库更新并提醒
+                                                                isSubmittingReorder = true
+                                                                lastCommittedOrder = finalIds
+                                                                draggedWorkspaceId = null
+                                                                draggedCardInitialTopY = 0f
+                                                                draggedCardTotalY = 0f
+                                                                draggedCardHeightPx = 0f
 
-                                                            isSubmittingReorder = true
-                                                            lastCommittedOrder = finalIds
-                                                            draggedWorkspaceId = null
-                                                            draggedCardInitialTopY = 0f
-                                                            draggedCardTotalY = 0f
-                                                            draggedCardHeightPx = 0f
-
-                                                            viewModel.reorderWorkspaces(finalIds) { success ->
-                                                                isSubmittingReorder = false
-                                                                if (success) {
-                                                                    dragStartSnapshot = null
-                                                                    Log.d("DragSort", "Reorder DB transaction SUCCESS for finalIds=$finalIds")
-                                                                    Toast.makeText(context, "工作空间排序已更新", Toast.LENGTH_SHORT).show()
-                                                                } else {
-                                                                    if (snapshot != null) {
+                                                                viewModel.reorderWorkspaces(finalIds) { success ->
+                                                                    isSubmittingReorder = false
+                                                                    if (success) {
+                                                                        dragStartSnapshot = null
+                                                                        Log.d("DragSort", "Reorder DB transaction SUCCESS for finalIds=$finalIds")
+                                                                        Toast.makeText(context, "工作空间排序已更新", Toast.LENGTH_SHORT).show()
+                                                                    } else {
                                                                         localWorkspaces = snapshot
+                                                                        dragStartSnapshot = null
+                                                                        Log.d("DragSort", "Reorder DB transaction FAILED, reverted to snapshot")
+                                                                        Toast.makeText(context, "保存排序失败，已恢复原顺序", Toast.LENGTH_SHORT).show()
                                                                     }
-                                                                    dragStartSnapshot = null
-                                                                    Log.d("DragSort", "Reorder DB transaction FAILED, reverted to snapshot")
-                                                                    Toast.makeText(context, "保存排序失败，已恢复原顺序", Toast.LENGTH_SHORT).show()
                                                                 }
+                                                            } else {
+                                                                // 位置未发生任何实际变化，静默清理状态，不发写库请求，不弹“排序已更新” Toast
+                                                                draggedWorkspaceId = null
+                                                                draggedCardInitialTopY = 0f
+                                                                draggedCardTotalY = 0f
+                                                                draggedCardHeightPx = 0f
+                                                                dragStartSnapshot = null
+                                                                isSubmittingReorder = false
+                                                                Log.d("DragSort", "Order unchanged. Silent cleanup, no DB transaction or Toast.")
                                                             }
                                                         }
                                                     },
