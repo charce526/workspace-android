@@ -4,7 +4,6 @@ import android.app.Activity
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -88,13 +88,13 @@ fun WorkspaceHomeScreen(
     val localView = LocalView.current
     val density = LocalDensity.current
     val window = (context as? Activity)?.window
-    val isDark = isSystemInDarkTheme()
+    val isLightStatusBar = MaterialTheme.colorScheme.background.luminance() > 0.5f
     val app = context.applicationContext as WorkspaceApplication
 
     // 恢复状态栏深浅模式图标对比度
     SideEffect {
         window?.let { w ->
-            WindowInsetsControllerCompat(w, localView).isAppearanceLightStatusBars = !isDark
+            WindowInsetsControllerCompat(w, localView).isAppearanceLightStatusBars = isLightStatusBar
         }
     }
 

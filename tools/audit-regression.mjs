@@ -30,7 +30,14 @@ const screen = read(base + 'ui/webview/NocoBaseWebViewScreen.kt');
 const chooser = read(base + 'webview/WebViewFileChooser.kt');
 const manager = read(base + 'webview/NocoBaseWebViewManager.kt');
 const repository = read(base + 'repository/WorkspaceRepository.kt');
+const workspaceDao = read(base + 'data/local/WorkspaceDao.kt');
 const authService = read(base + 'network/NocoBaseAuthService.kt');
+const floatingBall = read(base + 'ui/webview/components/FloatingControlBall.kt');
+const workspaceHome = read(base + 'ui/workspace/WorkspaceHomeScreen.kt');
+const sslHandler = screen.slice(
+    screen.indexOf('override fun onReceivedSslError'),
+    screen.indexOf('webChromeClient = object')
+);
 
 const guards = [
     ['live URL handler', screen.includes('currentUrlHandler.value.handleUrlLoading')],
@@ -44,6 +51,13 @@ const guards = [
     ['password destination guard', repository.includes('if (!identityChanged) getPassword(id)')],
     ['no destructive database fallback', !read(base + 'data/local/AppDatabase.kt').includes('fallbackToDestructiveMigration')],
     ['no embedded signing password', !/storePassword\s*=\s*"/.test(read('app/build.gradle.kts'))],
+    ['SSL errors only show page error for main frame', sslHandler.includes('handler?.cancel()') && sslHandler.includes('if (isMainFrameSslError)')],
+    ['WebView content avoids navigation bar and fills behind it', screen.includes('.navigationBarsPadding()') && screen.includes('.background(statusBarBgColor)')],
+    ['notification sync has an automatic single-flight guard', repository.includes('notificationSyncMutex.tryLock()') && repository.includes('lastAutomaticNotificationSyncAt')],
+    ['new workspaces append after custom ordering', workspaceDao.includes('getNextOrderIndex()') && workspaceDao.includes('MAX(order_index)')],
+    ['floating ball preserves valid saved ratios', !floatingBall.includes('savedVerticalRatio == 0.68f') && !floatingBall.includes('savedVerticalRatio == 0.85f')],
+    ['backup rules exclude workspace database', read('app/src/main/res/xml/data_extraction_rules.xml').includes('domain="database" path="."') && read('app/src/main/res/xml/backup_rules.xml').includes('domain="database" path="."')],
+    ['home status bar contrast follows app theme colors', workspaceHome.includes('colorScheme.background.luminance()') && !workspaceHome.includes('isSystemInDarkTheme()')],
     ['file option does not cancel first', !/onDismiss\(\)\s+on(?:TakePhoto|SelectGallery|SelectFile)\(\)/.test(read(base + 'ui/webview/components/FileUploadOptionsSheet.kt'))],
     ['auth service rethrows CancellationException', authService.includes('catch (e: CancellationException)') && authService.includes('throw e')],
     ['no account in auth logs', !authService.includes('Account:')],

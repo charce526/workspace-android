@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -92,8 +91,6 @@ fun FloatingControlBall(
     val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
 
     val statusBarTopPx = with(density) { WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx() }
-    val navBarBottomPx = with(density) { WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding().toPx() }
-
     val ballSizePx = with(density) { 52.dp.toPx() }
     val marginPx = with(density) { 12.dp.toPx() }
 
@@ -103,7 +100,8 @@ fun FloatingControlBall(
     var containerHeightPx by remember(screenHeightPx, statusBarTopPx) {
         mutableFloatStateOf((screenHeightPx - statusBarTopPx).coerceAtLeast(0f))
     }
-    val safeBottomMarginPx = navBarBottomPx + with(density) { 16.dp.toPx() }
+    // The parent content area already excludes navigation-bar insets.
+    val safeBottomMarginPx = with(density) { 16.dp.toPx() }
     val safeBottomLimitPx = (containerHeightPx - ballSizePx - safeBottomMarginPx).coerceAtLeast(safeTopPx)
 
     val availableSafeHeight = (safeBottomLimitPx - safeTopPx).coerceAtLeast(1f)
@@ -117,7 +115,7 @@ fun FloatingControlBall(
     var lastSavedVerticalRatio by remember { mutableFloatStateOf(savedVerticalRatio) }
 
     // 悬浮球默认位置控制
-    val initialRatio = if (savedVerticalRatio <= 0f || savedVerticalRatio == 0.68f || savedVerticalRatio == 0.85f) 0.96f else savedVerticalRatio
+    val initialRatio = savedVerticalRatio.coerceIn(0f, 1f)
     val initialYPx = (safeTopPx + initialRatio * availableSafeHeight).coerceIn(safeTopPx, safeBottomLimitPx)
 
     var isDragging by remember { mutableStateOf(false) }

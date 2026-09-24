@@ -32,7 +32,7 @@ interface WorkspaceDao {
     @Transaction
     suspend fun insertAndMarkLastUsed(workspace: WorkspaceEntity) {
         clearLastUsed()
-        insertWorkspace(workspace)
+        insertWorkspace(workspace.copy(orderIndex = getNextOrderIndex()))
     }
 
     @Transaction
@@ -50,6 +50,9 @@ interface WorkspaceDao {
 
     @Query("UPDATE workspaces SET order_index = :orderIndex WHERE id = :id")
     suspend fun updateOrderIndex(id: String, orderIndex: Int)
+
+    @Query("SELECT COALESCE(MAX(order_index), -1) + 1 FROM workspaces")
+    suspend fun getNextOrderIndex(): Int
 
     @Query("SELECT * FROM workspaces ORDER BY order_index ASC, last_used_at DESC")
     fun getAllWorkspacesFlow(): Flow<List<WorkspaceEntity>>

@@ -1,7 +1,6 @@
 package cn.xzbim.workspace.ui.about
 
 import android.app.Activity
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -16,6 +15,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -33,11 +33,11 @@ fun AboutScreen(
     val context = LocalContext.current
     val localView = LocalView.current
     val window = (context as? Activity)?.window
-    val isDark = isSystemInDarkTheme()
+    val isLightStatusBar = MaterialTheme.colorScheme.surface.luminance() > 0.5f
 
     SideEffect {
         window?.let { w ->
-            WindowInsetsControllerCompat(w, localView).isAppearanceLightStatusBars = !isDark
+            WindowInsetsControllerCompat(w, localView).isAppearanceLightStatusBars = isLightStatusBar
         }
     }
 

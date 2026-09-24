@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -66,6 +67,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -124,6 +126,7 @@ fun NocoBaseWebViewScreen(
 
     var sessionInjected by remember(workspaceId) { mutableStateOf(false) }
     var sessionReloadPerformed by remember(workspaceId) { mutableStateOf(false) }
+    var activeMainFrameUrl by remember(workspaceId) { mutableStateOf<String?>(null) }
     var redirectCount by remember { mutableIntStateOf(0) }
     var lastDetectedColor by remember { mutableStateOf<Color?>(null) }
 
@@ -218,6 +221,12 @@ fun NocoBaseWebViewScreen(
         window?.let { w ->
             WindowCompat.setDecorFitsSystemWindows(w, false)
             w.statusBarColor = android.graphics.Color.TRANSPARENT
+            w.navigationBarColor = android.graphics.Color.TRANSPARENT
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                w.isNavigationBarContrastEnforced = false
+            }
+            WindowInsetsControllerCompat(w, localView).isAppearanceLightNavigationBars =
+                defaultSurfaceColor.luminance() > 0.5f
         }
     }
 
@@ -254,6 +263,7 @@ fun NocoBaseWebViewScreen(
                                         window?.let { w ->
                                             val controller = WindowInsetsControllerCompat(w, localView)
                                             controller.isAppearanceLightStatusBars = isLightBg
+                                            controller.isAppearanceLightNavigationBars = isLightBg
                                         }
                                     }
                                 }
@@ -285,6 +295,7 @@ fun NocoBaseWebViewScreen(
 
         if (targetUrl.isNotBlank() && webView.url.isNullOrBlank()) {
             Log.d("NocoBaseWebView", "loadUrl called: $targetUrl")
+            activeMainFrameUrl = targetUrl
             webView.loadUrl(targetUrl)
 
             val startTime = System.currentTimeMillis()
@@ -365,7 +376,12 @@ fun NocoBaseWebViewScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(statusBarBgColor)
+            .navigationBarsPadding()
+    ) {
         // 状态栏安全区
         Box(
             modifier = Modifier
@@ -402,6 +418,7 @@ fun NocoBaseWebViewScreen(
                                 favicon: Bitmap?
                             ) {
                                 super.onPageStarted(view, url, favicon)
+                                activeMainFrameUrl = url
                                 isLoading = true
                                 isError = false
 
@@ -484,12 +501,26 @@ fun NocoBaseWebViewScreen(
                                 handler: SslErrorHandler?,
                                 error: SslError?
                             ) {
-                                Log.d("NocoBaseWebView", "SSL error: ${error?.primaryError}")
+                                val errorUrl = error?.url
+                                val configuredUrl = workspace?.let {
+                                    NocoBaseApiClient.normalizeServerUrl(it.serverUrl)
+                                }
+                                val isMainFrameSslError = !errorUrl.isNullOrBlank() && (
+                                    errorUrl == activeMainFrameUrl ||
+                                        errorUrl == view?.url ||
+                                        errorUrl == configuredUrl
+                                    )
+                                Log.d(
+                                    "NocoBaseWebView",
+                                    "SSL error: code=${error?.primaryError}, mainFrame=$isMainFrameSslError"
+                                )
                                 handler?.cancel()
-                                isError = true
-                                isLoading = false
-                                isLaunchOverlayVisible = false
-                                errorMessage = "SSL 证书不受信任，加载已被取消"
+                                if (isMainFrameSslError) {
+                                    isError = true
+                                    isLoading = false
+                                    isLaunchOverlayVisible = false
+                                    errorMessage = "SSL 证书不受信任，加载已被取消"
+                                }
                             }
                         }
 

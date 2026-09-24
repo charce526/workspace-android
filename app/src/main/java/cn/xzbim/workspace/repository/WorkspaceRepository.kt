@@ -1,6 +1,7 @@
 package cn.xzbim.workspace.repository
 
 import android.util.Log
+import android.os.SystemClock
 import cn.xzbim.workspace.data.local.WorkspaceDao
 import cn.xzbim.workspace.data.local.dao.WorkspaceNotificationStateDao
 import cn.xzbim.workspace.data.local.entity.WorkspaceNotificationStateEntity
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -52,6 +54,9 @@ class WorkspaceRepository(
     private val authService: NocoBaseAuthService,
     private val notificationService: NocoBaseNotificationService = NocoBaseNotificationService()
 ) {
+
+    private val notificationSyncMutex = Mutex()
+    private var lastAutomaticNotificationSyncAt = 0L
 
     companion object {
         private const val TAG = "WorkspaceRepository"
@@ -82,61 +87,79 @@ class WorkspaceRepository(
     ) { _, _ -> true }
 
     suspend fun syncNotificationCounts(isManualRefresh: Boolean = false): ManualRefreshResult = withContext(Dispatchers.IO) {
-        val globalEnabled = globalNotificationCountEnabledFlow.first()
-        if (!globalEnabled) {
-            return@withContext ManualRefreshResult.GLOBAL_DISABLED
+        if (isManualRefresh) {
+            notificationSyncMutex.lock()
+        } else if (!notificationSyncMutex.tryLock()) {
+            return@withContext ManualRefreshResult.COOLDOWN_ACTIVE
         }
 
-        val allWorkspaces = workspaceDao.getAllWorkspaces().map { it.toDomainModel() }
-        val eligibleWorkspaces = allWorkspaces.filter { it.notificationCountEnabled }
+        try {
+            val elapsedRealtime = SystemClock.elapsedRealtime()
+            if (!isManualRefresh && lastAutomaticNotificationSyncAt != 0L &&
+                elapsedRealtime - lastAutomaticNotificationSyncAt < 15_000L
+            ) {
+                return@withContext ManualRefreshResult.COOLDOWN_ACTIVE
+            }
+            if (!isManualRefresh) lastAutomaticNotificationSyncAt = elapsedRealtime
 
-        if (eligibleWorkspaces.isEmpty()) {
-            return@withContext ManualRefreshResult.NO_ELIGIBLE_WORKSPACES
-        }
+            val globalEnabled = globalNotificationCountEnabledFlow.first()
+            if (!globalEnabled) {
+                return@withContext ManualRefreshResult.GLOBAL_DISABLED
+            }
 
-        val now = System.currentTimeMillis()
+            val allWorkspaces = workspaceDao.getAllWorkspaces().map { it.toDomainModel() }
+            val eligibleWorkspaces = allWorkspaces.filter { it.notificationCountEnabled }
 
-        val results = coroutineScope {
-            val semaphore = Semaphore(3)
-            val jobs = eligibleWorkspaces.map { workspace ->
-                async {
-                    semaphore.withPermit {
-                        val existingState = workspaceNotificationStateDao.getStateByWorkspaceId(workspace.id)
-                            ?: WorkspaceNotificationStateEntity(workspaceId = workspace.id)
+            if (eligibleWorkspaces.isEmpty()) {
+                return@withContext ManualRefreshResult.NO_ELIGIBLE_WORKSPACES
+            }
 
-                        if (!isManualRefresh) {
-                            if (existingState.status == "UNSUPPORTED" || existingState.status == "AUTH_REQUIRED") {
-                                return@async NotificationCountResult.Unsupported
+            val now = System.currentTimeMillis()
+
+            val results = coroutineScope {
+                val semaphore = Semaphore(3)
+                val jobs = eligibleWorkspaces.map { workspace ->
+                    async {
+                        semaphore.withPermit {
+                            val existingState = workspaceNotificationStateDao.getStateByWorkspaceId(workspace.id)
+                                ?: WorkspaceNotificationStateEntity(workspaceId = workspace.id)
+
+                            if (!isManualRefresh) {
+                                if (existingState.status == "UNSUPPORTED" || existingState.status == "AUTH_REQUIRED") {
+                                    return@async NotificationCountResult.Unsupported
+                                }
+                                if (now < existingState.nextRetryAt) {
+                                    return@async NotificationCountResult.NetworkError
+                                }
                             }
-                            if (now < existingState.nextRetryAt) {
-                                return@async NotificationCountResult.NetworkError
-                            }
+
+                            val token = getToken(workspace.id) ?: ""
+                            val result = notificationService.fetchUnreadCount(workspace.serverUrl, token)
+
+                            val newState = calculateNextNotificationState(existingState, result, now)
+                            workspaceNotificationStateDao.insertOrUpdateState(newState)
+
+                            result
                         }
-
-                        val token = getToken(workspace.id) ?: ""
-                        val result = notificationService.fetchUnreadCount(workspace.serverUrl, token)
-
-                        val newState = calculateNextNotificationState(existingState, result, now)
-                        workspaceNotificationStateDao.insertOrUpdateState(newState)
-
-                        result
                     }
                 }
+                jobs.awaitAll()
             }
-            jobs.awaitAll()
-        }
 
-        val successCount = results.count { it is NotificationCountResult.Success }
-        val failureCount = results.count {
-            it !is NotificationCountResult.Success &&
-            it !is NotificationCountResult.Unsupported &&
-            it !is NotificationCountResult.AuthRequired
-        }
+            val successCount = results.count { it is NotificationCountResult.Success }
+            val failureCount = results.count {
+                it !is NotificationCountResult.Success &&
+                    it !is NotificationCountResult.Unsupported &&
+                    it !is NotificationCountResult.AuthRequired
+            }
 
-        when {
-            successCount > 0 && failureCount == 0 -> ManualRefreshResult.ALL_SUCCESS
-            successCount > 0 && failureCount > 0 -> ManualRefreshResult.PARTIAL_FAILED
-            else -> ManualRefreshResult.ALL_FAILED
+            when {
+                successCount > 0 && failureCount == 0 -> ManualRefreshResult.ALL_SUCCESS
+                successCount > 0 && failureCount > 0 -> ManualRefreshResult.PARTIAL_FAILED
+                else -> ManualRefreshResult.ALL_FAILED
+            }
+        } finally {
+            notificationSyncMutex.unlock()
         }
     }
 

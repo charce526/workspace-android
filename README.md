@@ -94,6 +94,7 @@ WebView 加载的是用户填写的 NocoBase 实例地址，具体页面、菜�
 - 凭据不会上传到 Workspace 开发者或其他第三方服务器。
 - 登录时，必要的账号密码信息会直接发送到用户主动配置的 NocoBase 实例，这是完成 NocoBase 登录所必需的。
 - 密码和 Token 使用 Android Keystore 保护的密钥进行 AES-GCM 加密存储。
+- Android 云备份和设备迁移规则会排除保存工作空间信息的本地数据库及凭据存储。
 - 应用不会把账号密码写入普通日志。
 - 使用 HTTP 实例时，账号、密码和 Token 可能在传输过程中被窃听，生产环境建议使用 HTTPS。
 - 实例本身的账号权限、HTTPS、反向代理和 NocoBase 安全配置由使用者负责。

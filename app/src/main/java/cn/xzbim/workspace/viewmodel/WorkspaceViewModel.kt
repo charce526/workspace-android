@@ -53,7 +53,7 @@ class WorkspaceViewModel(
     val floatingBallPosition: StateFlow<Pair<Boolean, Float>> = repository.floatingBallPositionFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = Pair(true, 0.68f)
+        initialValue = Pair(true, 0.96f)
     )
 
     val floatingBallIdleAlpha: StateFlow<Float> = repository.floatingBallIdleAlphaFlow.stateIn(

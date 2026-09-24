@@ -18,7 +18,7 @@ The existing UI design and application ID are retained.
 - Reject picker results using file:// or the application's own FileProvider. Camera URIs are created by the app separately.
 - Sanitize download names and use app-specific Downloads on Android 8/9, avoiding an undeclared public-storage permission requirement.
 - Make default/last-used workspace changes transactional. Add v1-to-v2 migration for the default flag; remove automatic destructive fallback.
-- Exclude encrypted credentials and WebView data from backup/device transfer; serialize first-time Keystore key creation.
+- Exclude the workspace database, encrypted credentials, and WebView data from backup/device transfer; serialize first-time Keystore key creation.
 - Handle login/storage failures and DataStore I/O failures without unhandled coroutine crashes. Preserve `CancellationException` in authentication and connection paths.
 - Fix floating-ball reset/resize updates, pixel-vs-dp touch threshold, and smooth drag-and-snap animation without position jumping.
 - Move release signing secrets into untracked local `keystore.properties`; remove account-bearing login logs and disable webpage console logging in non-debug builds.
