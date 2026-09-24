@@ -50,6 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
@@ -96,9 +97,14 @@ fun FloatingControlBall(
     val ballSizePx = with(density) { 52.dp.toPx() }
     val marginPx = with(density) { 12.dp.toPx() }
 
-    val safeTopPx = statusBarTopPx + with(density) { 12.dp.toPx() }
+    // This component is hosted below the status-bar spacer in NocoBaseWebViewScreen,
+    // so drag offsets use the content container's local coordinate system, not full-screen coordinates.
+    val safeTopPx = with(density) { 12.dp.toPx() }
+    var containerHeightPx by remember(screenHeightPx, statusBarTopPx) {
+        mutableFloatStateOf((screenHeightPx - statusBarTopPx).coerceAtLeast(0f))
+    }
     val safeBottomMarginPx = navBarBottomPx + with(density) { 16.dp.toPx() }
-    val safeBottomLimitPx = (screenHeightPx - ballSizePx - safeBottomMarginPx).coerceAtLeast(safeTopPx)
+    val safeBottomLimitPx = (containerHeightPx - ballSizePx - safeBottomMarginPx).coerceAtLeast(safeTopPx)
 
     val availableSafeHeight = (safeBottomLimitPx - safeTopPx).coerceAtLeast(1f)
 
@@ -117,6 +123,10 @@ fun FloatingControlBall(
     var isDragging by remember { mutableStateOf(false) }
     var currentXPx by remember { mutableFloatStateOf(if (isRightSide) rightSnapPx else leftSnapPx) }
     var currentYPx by remember { mutableFloatStateOf(initialYPx) }
+
+    LaunchedEffect(safeTopPx, safeBottomLimitPx) {
+        currentYPx = currentYPx.coerceIn(safeTopPx, safeBottomLimitPx)
+    }
 
     // 外部修改位置或屏幕尺寸变化时同步位置
     LaunchedEffect(savedIsRightSide, savedVerticalRatio, screenWidthPx, screenHeightPx) {
@@ -152,7 +162,11 @@ fun FloatingControlBall(
     var totalDragDistance by remember { mutableFloatStateOf(0f) }
 
     Box(
-        modifier = modifier.fillMaxSize()
+        modifier = modifier
+            .fillMaxSize()
+            .onSizeChanged { size ->
+                containerHeightPx = size.height.toFloat()
+            }
     ) {
         Box(
             modifier = Modifier

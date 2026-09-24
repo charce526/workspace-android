@@ -140,7 +140,6 @@ fun WorkspaceHomeScreen(
     }
 
     fun handleManualOrPullRefresh() {
-        Toast.makeText(context, "正在获取未读站内消息数量…", Toast.LENGTH_SHORT).show()
         viewModel.refreshNotificationCountsManually { result ->
             val msg = when (result) {
                 ManualRefreshResult.ALL_SUCCESS -> "未读消息数量已更新"

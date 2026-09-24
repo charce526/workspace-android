@@ -125,17 +125,17 @@ class WorkspaceViewModel(
         lastManualRefreshTime = now
 
         viewModelScope.launch {
+            var result = ManualRefreshResult.ALL_FAILED
             try {
-                val result = repository.syncNotificationCounts(isManualRefresh = true)
-                onResult(result)
+                result = repository.syncNotificationCounts(isManualRefresh = true)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 e.printStackTrace()
-                onResult(ManualRefreshResult.ALL_FAILED)
             } finally {
                 _isRefreshingNotifications.value = false
             }
+            onResult(result)
         }
     }
 
