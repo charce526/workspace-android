@@ -16,6 +16,7 @@ import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
@@ -110,6 +111,7 @@ fun NocoBaseWebViewScreen(
 
     // 主框架加载完成状态：防止子资源错误误杀全屏
     var mainFrameLoaded by remember(workspaceId) { mutableStateOf(false) }
+    var mainFrameHttpError by remember(workspaceId) { mutableStateOf(false) }
     var isError by remember(workspaceId) { mutableStateOf(false) }
     var errorMessage by remember(workspaceId) { mutableStateOf<String?>(null) }
 
@@ -427,17 +429,34 @@ fun NocoBaseWebViewScreen(
                                 super.onPageStarted(view, url, favicon)
                                 isLoading = true
                                 mainFrameLoaded = false
+                                mainFrameHttpError = false
                                 isError = false
                                 errorMessage = null
+                                Log.d("NocoBaseWebView", "Main-frame navigation started: $url")
                                 injectColorObserver(view)
+                            }
+
+                            override fun onPageCommitVisible(view: WebView?, url: String?) {
+                                super.onPageCommitVisible(view, url)
+                                Log.d("NocoBaseWebView", "Main frame committed visibly: $url")
+                                if (!mainFrameHttpError) {
+                                    mainFrameLoaded = true
+                                    isError = false
+                                    errorMessage = null
+                                }
                             }
 
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 super.onPageFinished(view, url)
                                 isLoading = false
                                 if (!url.isNullOrBlank() && url != "about:blank") {
-                                    mainFrameLoaded = true
-                                    isError = false
+                                    // onPageFinished also fires for HTTP error documents. Only
+                                    // treat the document as successful if the main response was OK.
+                                    if (!mainFrameHttpError) {
+                                        mainFrameLoaded = true
+                                        isError = false
+                                        errorMessage = null
+                                    }
                                 }
                                 readyDetector.checkReadiness(view)
 
@@ -465,6 +484,26 @@ fun NocoBaseWebViewScreen(
                                     errorMessage = error?.description?.toString()
                                 } else if (request?.isForMainFrame != true) {
                                     Log.d("NocoBaseWebView", "Sub-resource error ignored: ${request?.url}")
+                                }
+                            }
+
+                            override fun onReceivedHttpError(
+                                view: WebView?,
+                                request: WebResourceRequest?,
+                                errorResponse: WebResourceResponse?
+                            ) {
+                                super.onReceivedHttpError(view, request, errorResponse)
+                                if (request?.isForMainFrame == true) {
+                                    val status = errorResponse?.statusCode
+                                    Log.e(
+                                        "NocoBaseWebView",
+                                        "Main-frame HTTP error: status=$status, url=${request.url}"
+                                    )
+                                    mainFrameHttpError = true
+                                    mainFrameLoaded = false
+                                    isError = true
+                                    isLoading = false
+                                    errorMessage = "服务器返回 HTTP $status"
                                 }
                             }
 
@@ -559,6 +598,13 @@ fun NocoBaseWebViewScreen(
                             }
 
                             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                                if (consoleMessage != null && consoleMessage.messageLevel() >= ConsoleMessage.MessageLevel.WARNING) {
+                                    Log.w(
+                                        "NocoBaseWebViewConsole",
+                                        "${consoleMessage.messageLevel()}: ${consoleMessage.message()} " +
+                                            "(${consoleMessage.sourceId()}:${consoleMessage.lineNumber()})"
+                                    )
+                                }
                                 return true
                             }
                         }
