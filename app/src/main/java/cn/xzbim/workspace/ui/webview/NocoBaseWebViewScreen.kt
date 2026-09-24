@@ -20,6 +20,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import java.net.URI
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -314,7 +315,7 @@ fun NocoBaseWebViewScreen(
 
         val targetUrl = loadedWs?.let { NocoBaseApiClient.normalizeServerUrl(it.serverUrl) } ?: ""
 
-        if (targetUrl.isNotBlank() && webView.url.isNullOrBlank()) {
+        if (targetUrl.isNotBlank() && webView.hasNoDocumentUrl()) {
             Log.d("NocoBaseWebView", "loadUrl called: $targetUrl")
             webView.loadUrl(targetUrl)
         }
@@ -515,7 +516,12 @@ fun NocoBaseWebViewScreen(
                                 val errorUrl = error?.url ?: ""
                                 // SslError has no isForMainFrame field. Same-origin is not enough:
                                 // favicon/CSS/JS requests can share the document's origin.
-                                val isMainDocument = errorUrl.isNotBlank() && errorUrl == view?.url
+                                val isMainDocument = errorUrl.isNotBlank() &&
+                                    (sameDocumentUrl(errorUrl, view?.url) ||
+                                        sameDocumentUrl(
+                                            errorUrl,
+                                            workspace?.serverUrl?.let { NocoBaseApiClient.normalizeServerUrl(it) }
+                                        ))
                                 Log.d("NocoBaseWebView", "onReceivedSslError | Main document = $isMainDocument | URL = $errorUrl")
 
                                 // 安全合规：安全取消证书异常的请求，绝不 proceed 盲目放行
@@ -709,15 +715,19 @@ fun NocoBaseWebViewScreen(
             savedIdleAlpha = idleAlpha,
             containerColor = statusBarBgColor,
             onReload = {
-                isError = false
-                isLoading = true
-                if (webView.url.isNullOrBlank()) {
-                    val targetUrl = workspace?.let { NocoBaseApiClient.normalizeServerUrl(it.serverUrl) } ?: ""
-                    if (targetUrl.isNotBlank()) {
-                        webView.loadUrl(targetUrl)
-                    }
+                val targetUrl = workspace?.let { NocoBaseApiClient.normalizeServerUrl(it.serverUrl) }.orEmpty()
+                if (targetUrl.isBlank()) {
+                    isError = true
+                    isLoading = false
+                    errorMessage = "工作空间地址为空或无效"
                 } else {
-                    webView.reload()
+                    isError = false
+                    isLoading = true
+                    if (webView.hasNoDocumentUrl()) {
+                        webView.loadUrl(targetUrl)
+                    } else {
+                        webView.reload()
+                    }
                 }
             },
             onGoHome = {
@@ -800,11 +810,17 @@ fun NocoBaseWebViewScreen(
                         style = MaterialTheme.typography.labelLarge,
                         modifier = Modifier
                             .clickable {
-                                isError = false
-                                isLoading = true
                                 val targetUrl = workspace?.let { NocoBaseApiClient.normalizeServerUrl(it.serverUrl) }.orEmpty()
-                                if (webView.url.isNullOrBlank() && targetUrl.isNotBlank()) webView.loadUrl(targetUrl)
-                                else webView.reload()
+                                if (targetUrl.isBlank()) {
+                                    isError = true
+                                    isLoading = false
+                                    errorMessage = "工作空间地址为空或无效"
+                                } else {
+                                    isError = false
+                                    isLoading = true
+                                    if (webView.hasNoDocumentUrl()) webView.loadUrl(targetUrl)
+                                    else webView.reload()
+                                }
                             }
                             .padding(4.dp)
                     )
@@ -812,6 +828,36 @@ fun NocoBaseWebViewScreen(
             }
         }
     }
+}
+
+private fun WebView.hasNoDocumentUrl(): Boolean {
+    val currentUrl = url
+    return currentUrl.isNullOrBlank() || currentUrl.equals("about:blank", ignoreCase = true)
+}
+
+/** Compare document URLs while treating an optional trailing slash/default port as equivalent. */
+private fun sameDocumentUrl(first: String?, second: String?): Boolean {
+    fun canonicalize(raw: String?): String? {
+        return try {
+            val uri = URI(raw ?: "")
+            val scheme = uri.scheme?.lowercase() ?: return null
+            val host = uri.host?.lowercase() ?: return null
+            val port = when {
+                uri.port >= 0 -> uri.port
+                scheme == "https" -> 443
+                scheme == "http" -> 80
+                else -> return null
+            }
+            val path = (uri.rawPath?.takeIf(String::isNotBlank) ?: "/").trimEnd('/').ifBlank { "/" }
+            val query = uri.rawQuery?.let { "?$it" }.orEmpty()
+            "$scheme://$host:$port$path$query"
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    val normalizedFirst = canonicalize(first) ?: return false
+    return normalizedFirst == canonicalize(second)
 }
 
 private fun injectColorObserver(webView: WebView?) {
