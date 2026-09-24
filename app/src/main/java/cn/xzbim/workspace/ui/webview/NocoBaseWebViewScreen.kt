@@ -23,6 +23,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +33,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -41,11 +44,9 @@ import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -62,15 +63,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowInsetsControllerCompat
 import cn.xzbim.workspace.WorkspaceApplication
 import cn.xzbim.workspace.data.model.Workspace
 import cn.xzbim.workspace.network.NocoBaseApiClient
 import cn.xzbim.workspace.network.NetworkMonitor
 import cn.xzbim.workspace.network.result.SessionCheckResult
 import cn.xzbim.workspace.security.WebUrlPolicy
-import cn.xzbim.workspace.ui.launch.WorkspaceLaunchOverlay
 import cn.xzbim.workspace.ui.settings.WorkspaceSettingsSheet
 import cn.xzbim.workspace.ui.webview.components.FileUploadOptionsSheet
 import cn.xzbim.workspace.ui.webview.components.FloatingControlBall
@@ -94,19 +96,22 @@ fun NocoBaseWebViewScreen(
     onRedirectToReLogin: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val localView = LocalView.current
     val window = (context as? Activity)?.window
+    val themeSurfaceColor = MaterialTheme.colorScheme.surface
     val app = context.applicationContext as WorkspaceApplication
 
-    var workspace by remember { mutableStateOf<Workspace?>(null) }
-    var token by remember { mutableStateOf("") }
-    var sessionInjected by remember { mutableStateOf(false) }
+    var workspace by remember(workspaceId) { mutableStateOf<Workspace?>(null) }
+    var token by remember(workspaceId) { mutableStateOf("") }
+    var sessionInjected by remember(workspaceId) { mutableStateOf(false) }
 
-    var isLoading by remember { mutableStateOf(true) }
-    var progress by remember { mutableIntStateOf(0) }
+    var isLoading by remember(workspaceId) { mutableStateOf(true) }
+    var progress by remember(workspaceId) { mutableIntStateOf(0) }
 
     // 主框架加载完成状态：防止子资源错误误杀全屏
-    var mainFrameLoaded by remember { mutableStateOf(false) }
-    var isError by remember { mutableStateOf(false) }
+    var mainFrameLoaded by remember(workspaceId) { mutableStateOf(false) }
+    var isError by remember(workspaceId) { mutableStateOf(false) }
+    var errorMessage by remember(workspaceId) { mutableStateOf<String?>(null) }
 
     var lastBackTime by remember { mutableStateOf(0L) }
     var redirectCount by remember { mutableIntStateOf(0) }
@@ -143,7 +148,6 @@ fun NocoBaseWebViewScreen(
 
     // 页面就绪检测器
     val readyDetector = remember { WebViewReadyDetector() }
-    var isLaunchOverlayVisible by remember { mutableStateOf(true) }
 
     // 网络连通性监听
     val networkMonitor = remember(context) { NetworkMonitor(context) }
@@ -198,10 +202,48 @@ fun NocoBaseWebViewScreen(
     val currentUrlHandler = rememberUpdatedState(urlHandler)
 
     // 状态栏颜色同步
-    var statusBarBgColor by remember { mutableStateOf(Color.Transparent) }
-    var lastDetectedColor by remember { mutableStateOf<Color?>(null) }
+    var statusBarBgColor by remember(workspaceId) { mutableStateOf(themeSurfaceColor) }
+    var navigationBarBgColor by remember(workspaceId) { mutableStateOf(themeSurfaceColor) }
+    var lastDetectedColor by remember(workspaceId) { mutableStateOf<Color?>(null) }
+    val useLightStatusBarIcons =
+        (0.299f * statusBarBgColor.red + 0.587f * statusBarBgColor.green + 0.114f * statusBarBgColor.blue) > 0.5f
+    val useLightNavigationBarIcons =
+        (0.299f * navigationBarBgColor.red + 0.587f * navigationBarBgColor.green + 0.114f * navigationBarBgColor.blue) > 0.5f
 
-    val webView: WebView = remember(context) {
+    DisposableEffect(window, useLightStatusBarIcons, useLightNavigationBarIcons) {
+        val controller = window?.let { WindowInsetsControllerCompat(it, localView) }
+        val previousStatusBarColor = window?.statusBarColor
+        val previousNavigationBarColor = window?.navigationBarColor
+        val previousLightStatusBars = controller?.isAppearanceLightStatusBars
+        val previousLightNavigationBars = controller?.isAppearanceLightNavigationBars
+        val previousNavigationContrast = if (
+            window != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
+        ) window.isNavigationBarContrastEnforced else null
+
+        window?.let { activityWindow ->
+            activityWindow.statusBarColor = android.graphics.Color.TRANSPARENT
+            activityWindow.navigationBarColor = android.graphics.Color.TRANSPARENT
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                activityWindow.isNavigationBarContrastEnforced = false
+            }
+        }
+        controller?.isAppearanceLightStatusBars = useLightStatusBarIcons
+        controller?.isAppearanceLightNavigationBars = useLightNavigationBarIcons
+
+        onDispose {
+            window?.let { activityWindow ->
+                previousStatusBarColor?.let { activityWindow.statusBarColor = it }
+                previousNavigationBarColor?.let { activityWindow.navigationBarColor = it }
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    previousNavigationContrast?.let { activityWindow.isNavigationBarContrastEnforced = it }
+                }
+            }
+            previousLightStatusBars?.let { controller?.isAppearanceLightStatusBars = it }
+            previousLightNavigationBars?.let { controller?.isAppearanceLightNavigationBars = it }
+        }
+    }
+
+    val webView: WebView = remember(context, workspaceId) {
         WebView(context).apply {
             NocoBaseWebViewManager.configureSettings(this)
             setDownloadListener(downloadHandler)
@@ -212,11 +254,30 @@ fun NocoBaseWebViewScreen(
                     val mainHandler = Handler(Looper.getMainLooper())
                     mainHandler.post {
                         if (!rgbStr.isNullOrBlank() && rgbStr != "transparent") {
-                            parseAndApplyColor(rgbStr) { color, _ ->
+                            parseAndApplyColor(rgbStr) { color, isLightBg ->
                                 val prev = lastDetectedColor
                                 if (prev == null || isSignificantColorChange(prev, color)) {
                                     lastDetectedColor = color
                                     statusBarBgColor = color
+                                    window?.let {
+                                        WindowInsetsControllerCompat(it, localView)
+                                            .isAppearanceLightStatusBars = isLightBg
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                @JavascriptInterface
+                fun onBottomColorChanged(rgbStr: String?) {
+                    Handler(Looper.getMainLooper()).post {
+                        if (!rgbStr.isNullOrBlank() && rgbStr != "transparent") {
+                            parseAndApplyColor(rgbStr) { color, isLightBg ->
+                                navigationBarBgColor = color
+                                window?.let {
+                                    WindowInsetsControllerCompat(it, localView)
+                                        .isAppearanceLightNavigationBars = isLightBg
                                 }
                             }
                         }
@@ -242,7 +303,7 @@ fun NocoBaseWebViewScreen(
         webView.settings.displayZoomControls = false
     }
 
-    // 启动加载配置与冷启动遮罩 5 秒超时解封控制
+    // 启动 WebView；URL 已存在不能证明凭据注入成功。
     LaunchedEffect(workspaceId) {
         val loadedWs = viewModel.getWorkspaceById(workspaceId)
         workspace = loadedWs
@@ -255,26 +316,19 @@ fun NocoBaseWebViewScreen(
             Log.d("NocoBaseWebView", "loadUrl called: $targetUrl")
             webView.loadUrl(targetUrl)
         }
-        sessionInjected = true
-
-        // 启动遮罩超时保护：最多展示 5 秒，或者在主页面就绪后立即自动解封销毁
-        val startTime = System.currentTimeMillis()
-        while (isLaunchOverlayVisible && (System.currentTimeMillis() - startTime) < 5000L) {
-            if (readyDetector.isReady.value || !webView.url.isNullOrBlank()) {
-                delay(200L)
-                break
-            }
-            delay(200L)
+        if (targetUrl.isBlank()) {
+            isLoading = false
+            isError = true
+            errorMessage = "工作空间地址为空或无效"
         }
-        isLoading = false
-        isLaunchOverlayVisible = false
     }
 
     // 会话状态异步校验
-    var sessionReloadPerformed by remember { mutableStateOf(false) }
+    var sessionReloadPerformed by remember(workspaceId) { mutableStateOf(false) }
     var disposed by remember { mutableStateOf(false) }
 
     DisposableEffect(workspaceId) {
+        disposed = false
         onDispose {
             disposed = true
         }
@@ -328,9 +382,19 @@ fun NocoBaseWebViewScreen(
         }
     }
 
-    // 图层 1：底层无遮罩 View 结构（全屏延伸 WebView 网页画布，绝无全屏白色遮罩）
-    Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
+    // Root background continues the page color behind transparent system bars.
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(navigationBarBgColor)
+    ) {
+        // Keep the document below the status bar and above navigation/IME safe areas.
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .imePadding()
+        ) {
             // 状态栏顶部避让盒子
             Box(
                 modifier = Modifier
@@ -339,7 +403,7 @@ fun NocoBaseWebViewScreen(
                     .background(statusBarBgColor)
             )
 
-            // WebView 主画幅（100% 占满，延伸绘制至最底端）
+            // The WebView occupies the usable viewport; sampled page color fills the system bar area.
             AndroidView(
                 factory = {
                     webView.apply {
@@ -362,13 +426,15 @@ fun NocoBaseWebViewScreen(
                             ) {
                                 super.onPageStarted(view, url, favicon)
                                 isLoading = true
+                                mainFrameLoaded = false
+                                isError = false
+                                errorMessage = null
                                 injectColorObserver(view)
                             }
 
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 super.onPageFinished(view, url)
                                 isLoading = false
-                                isLaunchOverlayVisible = false // 页面加载完成立即销毁启动遮罩
                                 if (!url.isNullOrBlank() && url != "about:blank") {
                                     mainFrameLoaded = true
                                     isError = false
@@ -391,14 +457,15 @@ fun NocoBaseWebViewScreen(
                                 error: WebResourceError?
                             ) {
                                 super.onReceivedError(view, request, error)
-                                // 严格限制：只有主框架请求失败且页面尚未成功加载过，才判定为主框架错误
+                                // Only a failed main-frame navigation may show the inline error.
                                 if (request?.isForMainFrame == true && !mainFrameLoaded) {
                                     Log.d("NocoBaseWebView", "Main frame error: ${error?.description}")
                                     isError = true
-                                } else {
+                                    isLoading = false
+                                    errorMessage = error?.description?.toString()
+                                } else if (request?.isForMainFrame != true) {
                                     Log.d("NocoBaseWebView", "Sub-resource error ignored: ${request?.url}")
                                 }
-                                isLoading = false
                             }
 
                             override fun onReceivedSslError(
@@ -407,16 +474,19 @@ fun NocoBaseWebViewScreen(
                                 error: SslError?
                             ) {
                                 val errorUrl = error?.url ?: ""
-                                val isMainFrame = WebUrlPolicy.sameOrigin(workspace?.serverUrl, errorUrl)
-                                Log.d("NocoBaseWebView", "onReceivedSslError | Primary Domain Match = $isMainFrame | URL = $errorUrl")
+                                // SslError has no isForMainFrame field. Same-origin is not enough:
+                                // favicon/CSS/JS requests can share the document's origin.
+                                val isMainDocument = errorUrl.isNotBlank() && errorUrl == view?.url
+                                Log.d("NocoBaseWebView", "onReceivedSslError | Main document = $isMainDocument | URL = $errorUrl")
 
                                 // 安全合规：安全取消证书异常的请求，绝不 proceed 盲目放行
                                 handler?.cancel()
-                                isLoading = false
 
                                 // 只有主框架 SSL 证书失败且尚未加载成功过，才允许提示主框架错误
-                                if (isMainFrame && !mainFrameLoaded) {
+                                if (isMainDocument && !mainFrameLoaded) {
                                     isError = true
+                                    isLoading = false
+                                    errorMessage = "主页面 SSL 证书校验失败，已安全取消连接"
                                 }
                             }
                         }
@@ -494,7 +564,9 @@ fun NocoBaseWebViewScreen(
                         }
                     }
                 },
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
             )
         }
 
@@ -655,75 +727,41 @@ fun NocoBaseWebViewScreen(
             )
         }
 
-        // 冷启动过渡遮罩 (设置 5 秒最长超时，在 onPageFinished 时立即销毁，销毁后绝不重新出现)
-        if (isLaunchOverlayVisible) {
-            WorkspaceLaunchOverlay(
-                visible = isLaunchOverlayVisible,
-                workspaceName = workspace?.name ?: "工作空间",
-                serverUrl = workspace?.serverUrl ?: ""
-            )
-        }
-
-        // 主框架致命加载错误遮罩 (仅在主框架加载失败且页面未成功载入时呈现)
+        // Keep main-frame errors non-blocking so no opaque full-screen layer can hide WebView.
         if (isError && !mainFrameLoaded) {
-            Column(
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                shadowElevation = 4.dp,
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                    .align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = 8.dp, start = 16.dp, end = 16.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.CloudOff,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(56.dp)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = if (!isOnline) "无法连接网络" else "无法加载页面",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = "页面加载失败，请检查网络连接或服务器配置。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Row {
-                    OutlinedButton(
-                        onClick = onNavigateBack,
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("返回工作空间")
-                    }
-
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    Button(
-                        onClick = {
-                            isError = false
-                            isLoading = true
-                            val targetUrl = workspace?.let { NocoBaseApiClient.normalizeServerUrl(it.serverUrl) } ?: ""
-                            if (webView.url.isNullOrBlank() && targetUrl.isNotBlank()) {
-                                webView.loadUrl(targetUrl)
-                            } else {
-                                webView.reload()
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = errorMessage ?: if (!isOnline) "网络连接失败" else "页面加载失败",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "重试",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier
+                            .clickable {
+                                isError = false
+                                isLoading = true
+                                val targetUrl = workspace?.let { NocoBaseApiClient.normalizeServerUrl(it.serverUrl) }.orEmpty()
+                                if (webView.url.isNullOrBlank() && targetUrl.isNotBlank()) webView.loadUrl(targetUrl)
+                                else webView.reload()
                             }
-                        },
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("重试")
-                    }
+                            .padding(4.dp)
+                    )
                 }
             }
         }
@@ -764,22 +802,55 @@ private fun injectColorObserver(webView: WebView?) {
                 return null;
             }
 
+            function isTransparentColor(colorStr) {
+                if (!colorStr || colorStr === 'transparent') return true;
+                if (colorStr.indexOf('rgba') === 0) {
+                    var parts = colorStr.substring(colorStr.indexOf('(') + 1, colorStr.lastIndexOf(')')).split(',');
+                    return parts.length >= 4 && parseFloat(parts[3]) <= 0;
+                }
+                return false;
+            }
+
             function getTopColor() {
                 var el = document.querySelector('header, .ant-layout-header, [class*="header"], [class*="Header"], nav, .ant-layout-sider-logo');
                 if (el) {
                     var bg = window.getComputedStyle(el).backgroundColor;
                     var parsed = parseRgb(bg);
-                    if (parsed && parsed !== '0,0,0,0' && parsed !== '255,255,255,0') return parsed;
+                    if (parsed && !isTransparentColor(bg)) return parsed;
                 }
 
                 var bodyBg = window.getComputedStyle(document.body).backgroundColor;
                 var parsedBody = parseRgb(bodyBg);
-                if (parsedBody && parsedBody !== '0,0,0,0') return parsedBody;
+                if (parsedBody && !isTransparentColor(bodyBg)) return parsedBody;
 
                 return null;
             }
 
+            function getBottomColor() {
+                var width = window.innerWidth || document.documentElement.clientWidth;
+                var height = window.innerHeight || document.documentElement.clientHeight;
+                var points = [width * 0.2, width * 0.5, width * 0.8];
+
+                for (var i = 0; i < points.length; i++) {
+                    var el = document.elementFromPoint(points[i], Math.max(0, height - 2));
+                    while (el && el !== document.documentElement) {
+                        var bg = window.getComputedStyle(el).backgroundColor;
+                        var parsed = parseRgb(bg);
+                        if (parsed && !isTransparentColor(bg)) return parsed;
+                        el = el.parentElement;
+                    }
+                }
+
+                var bodyBg = window.getComputedStyle(document.body).backgroundColor;
+                var bodyColor = parseRgb(bodyBg);
+                if (bodyColor && !isTransparentColor(bodyBg)) return bodyColor;
+                var rootBg = window.getComputedStyle(document.documentElement).backgroundColor;
+                var rootColor = parseRgb(rootBg);
+                return rootColor && !isTransparentColor(rootBg) ? rootColor : '255,255,255';
+            }
+
             var lastRgb = null;
+            var lastBottomRgb = null;
             function checkAndNotify() {
                 var rgb = getTopColor();
                 if (rgb && rgb !== lastRgb) {
@@ -787,6 +858,11 @@ private fun injectColorObserver(webView: WebView?) {
                     if (window.NocoBaseColorBridge && window.NocoBaseColorBridge.onTopColorChanged) {
                         window.NocoBaseColorBridge.onTopColorChanged(rgb);
                     }
+                }
+                var bottomRgb = getBottomColor();
+                if (bottomRgb && bottomRgb !== lastBottomRgb && window.NocoBaseColorBridge && window.NocoBaseColorBridge.onBottomColorChanged) {
+                    lastBottomRgb = bottomRgb;
+                    window.NocoBaseColorBridge.onBottomColorChanged(bottomRgb);
                 }
             }
 

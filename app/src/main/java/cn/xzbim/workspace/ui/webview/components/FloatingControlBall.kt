@@ -7,11 +7,11 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -51,7 +51,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.stringResource
@@ -80,7 +79,6 @@ fun FloatingControlBall(
     onPositionSaved: (isRightSide: Boolean, verticalRatio: Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val viewConfig = LocalViewConfiguration.current
 
@@ -88,55 +86,21 @@ fun FloatingControlBall(
     val luminance = 0.299f * ballBgColor.red + 0.587f * ballBgColor.green + 0.114f * ballBgColor.blue
     val ballIconTint = if (luminance > 0.5f) Color(0xFF1C1B1F) else Color(0xFFFFFFFF)
 
-    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
-    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
-
-    val statusBarTopPx = with(density) { WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx() }
-    val navBarBottomPx = with(density) { WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding().toPx() }
-    val imeBottomPx = with(density) { WindowInsets.ime.asPaddingValues().calculateBottomPadding().toPx() }
-
-    val bottomInsetsPx = maxOf(navBarBottomPx, imeBottomPx)
+    val statusBarTopPx = WindowInsets.statusBars.getTop(density).toFloat()
+    val navBarBottomPx = WindowInsets.navigationBars.getBottom(density).toFloat()
+    val imeBottomPx = WindowInsets.ime.getBottom(density).toFloat()
 
     val ballSizePx = with(density) { 52.dp.toPx() }
     val marginPx = with(density) { 12.dp.toPx() }
 
-    val safeTopPx = statusBarTopPx + with(density) { 12.dp.toPx() }
-    val safeBottomMarginPx = bottomInsetsPx + with(density) { 16.dp.toPx() }
-    val safeBottomLimitPx = (screenHeightPx - ballSizePx - safeBottomMarginPx).coerceAtLeast(safeTopPx)
-
-    val availableSafeHeight = (safeBottomLimitPx - safeTopPx).coerceAtLeast(1f)
-
     val leftSnapPx = marginPx
-    val rightSnapPx = (screenWidthPx - ballSizePx - marginPx).coerceAtLeast(leftSnapPx)
     val touchSlopPx = viewConfig.touchSlop
 
     var isRightSide by remember { mutableStateOf(savedIsRightSide) }
     var lastSavedIsRightSide by remember { mutableStateOf(savedIsRightSide) }
     var lastSavedVerticalRatio by remember { mutableFloatStateOf(savedVerticalRatio) }
 
-    // 悬浮球默认位置控制
-    val initialRatio = if (savedVerticalRatio <= 0f || savedVerticalRatio == 0.68f || savedVerticalRatio == 0.85f) 0.96f else savedVerticalRatio
-    val initialYPx = (safeTopPx + initialRatio * availableSafeHeight).coerceIn(safeTopPx, safeBottomLimitPx)
-
     var isDragging by remember { mutableStateOf(false) }
-    var currentXPx by remember { mutableFloatStateOf(if (isRightSide) rightSnapPx else leftSnapPx) }
-    var currentYPx by remember { mutableFloatStateOf(initialYPx) }
-
-    // 外部主动重置位置、软键盘弹出/收起、屏幕旋转或尺寸变化时同步位置，确保始终在 Safe 边界内
-    LaunchedEffect(savedIsRightSide, savedVerticalRatio, screenWidthPx, screenHeightPx, bottomInsetsPx) {
-        if (!isDragging) {
-            lastSavedIsRightSide = savedIsRightSide
-            lastSavedVerticalRatio = savedVerticalRatio
-            isRightSide = savedIsRightSide
-            currentXPx = if (isRightSide) rightSnapPx else leftSnapPx
-            currentYPx = (safeTopPx + initialRatio * availableSafeHeight).coerceIn(safeTopPx, safeBottomLimitPx)
-        } else {
-            currentYPx = currentYPx.coerceIn(safeTopPx, safeBottomLimitPx)
-        }
-    }
-
-    val renderXPx = currentXPx
-    val renderYPx = currentYPx
 
     var isInteracting by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
@@ -157,16 +121,55 @@ fun FloatingControlBall(
 
     var totalDragDistance by remember { mutableFloatStateOf(0f) }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier.fillMaxSize()
     ) {
+        // Use the overlay's actual bounds rather than display metrics. The Compose window
+        // may be shorter/wider under edge-to-edge, split-screen, cutouts, or IME resizing.
+        val screenWidthPx = with(density) { maxWidth.toPx() }
+        val screenHeightPx = with(density) { maxHeight.toPx() }
+        val safeTopPx = statusBarTopPx + with(density) { 12.dp.toPx() }
+        val safeBottomInsetPx = maxOf(navBarBottomPx, imeBottomPx)
+        val safeBottomLimitPx = (
+            screenHeightPx - ballSizePx - safeBottomInsetPx - with(density) { 16.dp.toPx() }
+        ).coerceAtLeast(safeTopPx)
+        val availableSafeHeight = (safeBottomLimitPx - safeTopPx).coerceAtLeast(1f)
+        val rightSnapPx = (screenWidthPx - ballSizePx - marginPx).coerceAtLeast(leftSnapPx)
+        val initialRatio =
+            if (savedVerticalRatio <= 0f || savedVerticalRatio == 0.68f || savedVerticalRatio == 0.85f) {
+                0.96f
+            } else {
+                savedVerticalRatio
+            }
+        val initialYPx = (safeTopPx + initialRatio * availableSafeHeight)
+            .coerceIn(safeTopPx, safeBottomLimitPx)
+        var currentXPx by remember { mutableFloatStateOf(if (isRightSide) rightSnapPx else leftSnapPx) }
+        var currentYPx by remember { mutableFloatStateOf(initialYPx) }
+
+        LaunchedEffect(savedIsRightSide, savedVerticalRatio, screenWidthPx, screenHeightPx, safeTopPx, safeBottomLimitPx) {
+            if (!isDragging) {
+                lastSavedIsRightSide = savedIsRightSide
+                lastSavedVerticalRatio = savedVerticalRatio
+                isRightSide = savedIsRightSide
+                currentXPx = if (isRightSide) rightSnapPx else leftSnapPx
+                currentYPx = (safeTopPx + initialRatio.coerceIn(0f, 1f) * availableSafeHeight)
+                    .coerceIn(safeTopPx, safeBottomLimitPx)
+            } else {
+                currentXPx = currentXPx.coerceIn(leftSnapPx, rightSnapPx)
+                currentYPx = currentYPx.coerceIn(safeTopPx, safeBottomLimitPx)
+            }
+        }
+
+        val renderXPx = currentXPx.coerceIn(leftSnapPx, rightSnapPx)
+        val renderYPx = currentYPx.coerceIn(safeTopPx, safeBottomLimitPx)
+
         Box(
             modifier = Modifier
                 .offset { IntOffset(renderXPx.roundToInt(), renderYPx.roundToInt()) }
                 .size(52.dp)
                 .alpha(animatedAlpha)
                 .clip(CircleShape)
-                .pointerInput(screenWidthPx, screenHeightPx) {
+                .pointerInput(screenWidthPx, screenHeightPx, safeTopPx, safeBottomLimitPx) {
                     detectDragGestures(
                         onDragStart = {
                             isDragging = true
@@ -180,8 +183,17 @@ fun FloatingControlBall(
                             currentYPx = (currentYPx + dragAmount.y).coerceIn(safeTopPx, safeBottomLimitPx)
                         },
                         onDragCancel = {
+                            isRightSide = lastSavedIsRightSide
+                            currentXPx = if (lastSavedIsRightSide) rightSnapPx else leftSnapPx
+                            val cancelRatio =
+                                if (lastSavedVerticalRatio <= 0f || lastSavedVerticalRatio == 0.68f || lastSavedVerticalRatio == 0.85f) {
+                                    0.96f
+                                } else {
+                                    lastSavedVerticalRatio.coerceIn(0f, 1f)
+                                }
+                            currentYPx = (safeTopPx + cancelRatio * availableSafeHeight)
+                                .coerceIn(safeTopPx, safeBottomLimitPx)
                             isDragging = false
-                            currentXPx = if (isRightSide) rightSnapPx else leftSnapPx
                         },
                         onDragEnd = {
                             isInteracting = true
