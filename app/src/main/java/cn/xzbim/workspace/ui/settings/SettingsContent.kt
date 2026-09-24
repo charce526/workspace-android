@@ -59,7 +59,7 @@ import cn.xzbim.workspace.data.preferences.ThemeMode
 import cn.xzbim.workspace.viewmodel.WorkspaceViewModel
 
 /**
- * 设置页面可复用核心 List/Group 组件（统一单一真实配置数据源，为深色/浅色模式提供高对比度 Switch 视觉效果）
+ * 设置页面可复用核心 List/Group 组件（统一基于当前应用 ThemeMode 提供高对比度 Switch 视觉效果）
  */
 @Composable
 fun SettingsContent(
@@ -82,7 +82,12 @@ fun SettingsContent(
     var showClearCacheDialog by remember { mutableStateOf(false) }
     var showClearSiteDataDialog by remember { mutableStateOf(false) }
 
-    val switchColors = appSwitchColors()
+    val darkTheme = when (themeMode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+    val switchColors = appSwitchColors(darkTheme)
 
     Column(
         modifier = modifier
@@ -424,8 +429,7 @@ fun SettingsContent(
 }
 
 @Composable
-private fun appSwitchColors(): SwitchColors {
-    val isDark = isSystemInDarkTheme()
+private fun appSwitchColors(isDark: Boolean): SwitchColors {
     return if (isDark) {
         SwitchDefaults.colors(
             checkedThumbColor = MaterialTheme.colorScheme.onPrimary,

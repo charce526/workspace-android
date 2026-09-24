@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -64,7 +65,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * 客户端 52dp 悬浮控制球组件（支持自由拖拽吸附、零晃动与快捷菜单导航）
+ * 客户端 52dp 悬浮控制球组件（动态绑定 statusBars, navigationBars, ime 安全边界，支持自由拖拽磁吸）
  */
 @Composable
 fun FloatingControlBall(
@@ -92,12 +93,15 @@ fun FloatingControlBall(
 
     val statusBarTopPx = with(density) { WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx() }
     val navBarBottomPx = with(density) { WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding().toPx() }
+    val imeBottomPx = with(density) { WindowInsets.ime.asPaddingValues().calculateBottomPadding().toPx() }
+
+    val bottomInsetsPx = maxOf(navBarBottomPx, imeBottomPx)
 
     val ballSizePx = with(density) { 52.dp.toPx() }
     val marginPx = with(density) { 12.dp.toPx() }
 
     val safeTopPx = statusBarTopPx + with(density) { 12.dp.toPx() }
-    val safeBottomMarginPx = navBarBottomPx + with(density) { 16.dp.toPx() }
+    val safeBottomMarginPx = bottomInsetsPx + with(density) { 16.dp.toPx() }
     val safeBottomLimitPx = (screenHeightPx - ballSizePx - safeBottomMarginPx).coerceAtLeast(safeTopPx)
 
     val availableSafeHeight = (safeBottomLimitPx - safeTopPx).coerceAtLeast(1f)
@@ -118,14 +122,16 @@ fun FloatingControlBall(
     var currentXPx by remember { mutableFloatStateOf(if (isRightSide) rightSnapPx else leftSnapPx) }
     var currentYPx by remember { mutableFloatStateOf(initialYPx) }
 
-    // 外部修改位置或屏幕尺寸变化时同步位置
-    LaunchedEffect(savedIsRightSide, savedVerticalRatio, screenWidthPx, screenHeightPx) {
-        if (!isDragging && (savedIsRightSide != lastSavedIsRightSide || savedVerticalRatio != lastSavedVerticalRatio)) {
+    // 外部主动重置位置、软键盘弹出/收起、屏幕旋转或尺寸变化时同步位置，确保始终在 Safe 边界内
+    LaunchedEffect(savedIsRightSide, savedVerticalRatio, screenWidthPx, screenHeightPx, bottomInsetsPx) {
+        if (!isDragging) {
             lastSavedIsRightSide = savedIsRightSide
             lastSavedVerticalRatio = savedVerticalRatio
             isRightSide = savedIsRightSide
             currentXPx = if (isRightSide) rightSnapPx else leftSnapPx
             currentYPx = (safeTopPx + initialRatio * availableSafeHeight).coerceIn(safeTopPx, safeBottomLimitPx)
+        } else {
+            currentYPx = currentYPx.coerceIn(safeTopPx, safeBottomLimitPx)
         }
     }
 
@@ -187,7 +193,7 @@ fun FloatingControlBall(
                                 val newRatio = ((currentYPx - safeTopPx) / availableSafeHeight).coerceIn(0.0f, 1.0f)
                                 val snapX = if (newIsRightSide) rightSnapPx else leftSnapPx
 
-                                // 更新本地坐标与方向锁定，并结束拖拽状态
+                                // 先将本地坐标与方向锁定更新至最终吸附位置，再关闭拖拽状态，确保无闪烁无晃动
                                 currentXPx = snapX
                                 isRightSide = newIsRightSide
                                 lastSavedIsRightSide = newIsRightSide

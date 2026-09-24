@@ -95,10 +95,8 @@ class WorkspaceRepository(
         }
 
         val now = System.currentTimeMillis()
-        var successCount = 0
-        var failureCount = 0
 
-        coroutineScope {
+        val results = coroutineScope {
             val semaphore = Semaphore(3)
             val jobs = eligibleWorkspaces.map { workspace ->
                 async {
@@ -108,10 +106,10 @@ class WorkspaceRepository(
 
                         if (!isManualRefresh) {
                             if (existingState.status == "UNSUPPORTED" || existingState.status == "AUTH_REQUIRED") {
-                                return@async
+                                return@async NotificationCountResult.Unsupported
                             }
                             if (now < existingState.nextRetryAt) {
-                                return@async
+                                return@async NotificationCountResult.NetworkError
                             }
                         }
 
@@ -121,15 +119,18 @@ class WorkspaceRepository(
                         val newState = calculateNextNotificationState(existingState, result, now)
                         workspaceNotificationStateDao.insertOrUpdateState(newState)
 
-                        if (result is NotificationCountResult.Success) {
-                            successCount++
-                        } else {
-                            failureCount++
-                        }
+                        result
                     }
                 }
             }
             jobs.awaitAll()
+        }
+
+        val successCount = results.count { it is NotificationCountResult.Success }
+        val failureCount = results.count {
+            it !is NotificationCountResult.Success &&
+            it !is NotificationCountResult.Unsupported &&
+            it !is NotificationCountResult.AuthRequired
         }
 
         when {
@@ -254,6 +255,23 @@ class WorkspaceRepository(
 
     suspend fun setGlobalNotificationCountEnabled(enabled: Boolean) {
         settingsDataStore.setGlobalNotificationCountEnabled(enabled)
+        if (enabled) {
+            // 重新开启全局通知开关时：方案 A 清除所有旧未读数量与成功时间，以便成功重新获取后才显示 Badge
+            val states = workspaceNotificationStateDao.getAllNotificationStates()
+            states.forEach { state ->
+                workspaceNotificationStateDao.insertOrUpdateState(
+                    state.copy(
+                        unreadCount = 0,
+                        status = "AVAILABLE",
+                        failureCount = 0,
+                        lastAttemptAt = 0L,
+                        lastSuccessAt = 0L,
+                        nextRetryAt = 0L,
+                        lastErrorType = null
+                    )
+                )
+            }
+        }
     }
 
     suspend fun getWorkspace(id: String): Workspace? {
@@ -342,7 +360,15 @@ class WorkspaceRepository(
             val existingState = workspaceNotificationStateDao.getStateByWorkspaceId(workspaceId)
                 ?: WorkspaceNotificationStateEntity(workspaceId = workspaceId)
             workspaceNotificationStateDao.insertOrUpdateState(
-                existingState.copy(status = "AVAILABLE", failureCount = 0, nextRetryAt = 0L)
+                existingState.copy(
+                    unreadCount = 0,
+                    status = "AVAILABLE",
+                    failureCount = 0,
+                    lastAttemptAt = 0L,
+                    lastSuccessAt = 0L,
+                    nextRetryAt = 0L,
+                    lastErrorType = null
+                )
             )
 
             Log.d(TAG, "reLoginAndUpdateWorkspace -> Successfully updated credentials in-place for $workspaceId")
@@ -372,6 +398,22 @@ class WorkspaceRepository(
             )
             if (reLoginResult is LoginResult.Success) {
                 credentialStore.saveToken(workspaceId, reLoginResult.token)
+
+                // 自动重新登录成功后：同步将通知状态复位为 AVAILABLE，清除过期的 AUTH_REQUIRED 挂起状态
+                val existingState = workspaceNotificationStateDao.getStateByWorkspaceId(workspaceId)
+                    ?: WorkspaceNotificationStateEntity(workspaceId = workspaceId)
+                workspaceNotificationStateDao.insertOrUpdateState(
+                    existingState.copy(
+                        unreadCount = 0,
+                        status = "AVAILABLE",
+                        failureCount = 0,
+                        lastAttemptAt = 0L,
+                        lastSuccessAt = 0L,
+                        nextRetryAt = 0L,
+                        lastErrorType = null
+                    )
+                )
+
                 return SessionCheckResult.Valid(reLoginResult.userId, reLoginResult.username)
             }
             if (reLoginResult !is LoginResult.InvalidCredentials) {
@@ -420,11 +462,19 @@ class WorkspaceRepository(
                 credentialStore.savePassword(id, "")
             }
 
-            // 修改服务器/账号成功后重置退避状态
+            // 修改服务器/账号成功后重置退避与通知挂起状态，恢复为可用可获取
             val existingState = workspaceNotificationStateDao.getStateByWorkspaceId(id)
                 ?: WorkspaceNotificationStateEntity(workspaceId = id)
             workspaceNotificationStateDao.insertOrUpdateState(
-                existingState.copy(status = "AVAILABLE", failureCount = 0, nextRetryAt = 0L)
+                existingState.copy(
+                    unreadCount = 0,
+                    status = "AVAILABLE",
+                    failureCount = 0,
+                    lastAttemptAt = 0L,
+                    lastSuccessAt = 0L,
+                    nextRetryAt = 0L,
+                    lastErrorType = null
+                )
             )
 
             Log.d(TAG, "updateWorkspaceWithAuth -> Verification success, saved updated credentials for $id")
@@ -438,11 +488,19 @@ class WorkspaceRepository(
         val existing = workspaceDao.getWorkspaceById(id) ?: return
         workspaceDao.updateWorkspace(existing.copy(notificationCountEnabled = enabled, updatedAt = System.currentTimeMillis()))
         if (enabled) {
-            // 重新开启开关后复位失败重试，允许立即获取
+            // 重新开启卡片通知开关时：方案 A 清除旧数量与成功时间（避免显示过期的旧未读数），复位重试状态并允许立即获取
             val existingState = workspaceNotificationStateDao.getStateByWorkspaceId(id)
                 ?: WorkspaceNotificationStateEntity(workspaceId = id)
             workspaceNotificationStateDao.insertOrUpdateState(
-                existingState.copy(status = "AVAILABLE", failureCount = 0, nextRetryAt = 0L)
+                existingState.copy(
+                    unreadCount = 0,
+                    status = "AVAILABLE",
+                    failureCount = 0,
+                    lastAttemptAt = 0L,
+                    lastSuccessAt = 0L,
+                    nextRetryAt = 0L,
+                    lastErrorType = null
+                )
             )
         }
     }
